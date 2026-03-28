@@ -1310,11 +1310,11 @@ function restoreState() {
   document.getElementById('numRounds').value = state.numRounds || 15;
   document.getElementById('preferMixed').checked = state.preferMixed !== false;
 
-  // Restore grids
+  // Restore grids (skipSave=true to avoid overwriting restored data)
   playerData = state.playerData || [];
   courtData = state.courtData || [];
-  buildPlayerGrid(state.numPlayers || 15);
-  buildCourtInputs(state.numCourts || 3);
+  buildPlayerGrid(state.numPlayers || 15, true);
+  buildCourtInputs(state.numCourts || 3, true);
 
   // Restore schedule if it was generated
   if (state.hasSchedule && state.scheduleResult && state.scheduleNames) {
@@ -1342,10 +1342,9 @@ let currentCourtCount = 3;
 let playerData = []; // [{name, gender}]
 let courtData = [];  // [number]
 
-function buildPlayerGrid(count) {
+function buildPlayerGrid(count, skipSave) {
   const grid = document.getElementById('playerGrid');
-  // Save current values
-  savePlayerData();
+  if (!skipSave) savePlayerData();
   grid.innerHTML = '';
   for (let i = 0; i < count; i++) {
     const div = document.createElement('div');
@@ -1376,9 +1375,9 @@ function buildPlayerGrid(count) {
   currentPlayerCount = count;
 }
 
-function buildCourtInputs(count) {
+function buildCourtInputs(count, skipSave) {
   const container = document.getElementById('courtInputs');
-  saveCourtData();
+  if (!skipSave) saveCourtData();
   container.innerHTML = '';
   for (let i = 0; i < count; i++) {
     const input = document.createElement('input');
