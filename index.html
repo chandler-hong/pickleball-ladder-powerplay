@@ -182,6 +182,11 @@
     transform: translateY(-1px);
   }
   .btn-primary:active { transform: translateY(0); }
+  .btn-danger {
+    background: rgba(239,68,68,0.15); color: #f87171;
+    border: 1px solid rgba(239,68,68,0.3);
+  }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); color: #fca5a5; }
 
   /* Schedule Section */
   .schedule-header {
@@ -594,7 +599,7 @@
   <div class="card">
     <div class="controls" style="margin-top:0;">
       <div class="spacer"></div>
-      <button class="btn btn-secondary" onclick="newTournament()">New Tournament</button>
+      <button class="btn btn-danger" onclick="newTournament()">Reset Tool</button>
       <button class="btn btn-secondary" onclick="fillDefaults()">Fill Random</button>
       <button class="btn btn-primary" onclick="generate()">Generate Schedule</button>
     </div>
