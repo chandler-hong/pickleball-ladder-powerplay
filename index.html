@@ -1265,6 +1265,15 @@ function guessGender(name) {
   return null;
 }
 
+// --- State variables (declared early for restore) ---
+let totalRounds = 0;
+let numCourtsInSchedule = 0;
+let roundWinners = {};
+let scheduleData = null;
+let scheduleNames = null;
+let scheduleCourtNames = [];
+let lastFullResult = null;
+
 // --- LocalStorage persistence ---
 const STORAGE_KEY = 'powerplay_pickleball_state';
 
@@ -1418,11 +1427,9 @@ document.getElementById('numRounds').addEventListener('input', function() {
 });
 document.getElementById('preferMixed').addEventListener('change', saveState);
 
-// Initial build — restore saved state or start fresh
-if (!restoreState()) {
-  buildPlayerGrid(15);
-  buildCourtInputs(3);
-}
+// Initial build (default — may be overridden by restoreState at end of script)
+buildPlayerGrid(15);
+buildCourtInputs(3);
 
 const AMERICAN_FEMALE = [
   'abby','abigail','ada','adele','adeline','adriana','alexa','alexandra','alexis','alice',
@@ -1799,13 +1806,8 @@ function generate() {
   saveState();
 }
 
-let totalRounds = 0;
-let numCourtsInSchedule = 0;
-let roundWinners = {}; // roundWinners[roundNum][courtIdx] = 'A' | 'B' | null
-let scheduleData = null; // stored for leaderboard lookups
-let scheduleNames = null;
-let scheduleCourtNames = []; // stored for persistence
-let lastFullResult = null; // stored for stats re-render
+// (totalRounds, numCourtsInSchedule, roundWinners, scheduleData, scheduleNames,
+//  scheduleCourtNames, lastFullResult declared at top for hoisting)
 
 function pickWinner(roundNum, courtIdx, team) {
   if (!roundWinners[roundNum]) roundWinners[roundNum] = {};
@@ -2074,6 +2076,9 @@ function renderMatrix(title, matrix, names, n, maxVal) {
   html += '</tbody></table></div>';
   return html;
 }
+
+// --- Restore saved state on load ---
+restoreState();
 </script>
 </body>
 </html>
