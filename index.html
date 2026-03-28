@@ -594,6 +594,7 @@
   <div class="card">
     <div class="controls" style="margin-top:0;">
       <div class="spacer"></div>
+      <button class="btn btn-secondary" onclick="newTournament()">New Tournament</button>
       <button class="btn btn-secondary" onclick="fillDefaults()">Fill Random</button>
       <button class="btn btn-primary" onclick="generate()">Generate Schedule</button>
     </div>
@@ -1264,6 +1265,66 @@ function guessGender(name) {
   return null;
 }
 
+// --- LocalStorage persistence ---
+const STORAGE_KEY = 'powerplay_pickleball_state';
+
+function saveState() {
+  savePlayerData();
+  saveCourtData();
+  const state = {
+    numPlayers: currentPlayerCount,
+    numCourts: currentCourtCount,
+    numRounds: document.getElementById('numRounds').value,
+    preferMixed: document.getElementById('preferMixed').checked,
+    playerData,
+    courtData,
+    // Schedule state (if generated)
+    hasSchedule: !!scheduleData,
+    scheduleResult: scheduleData ? { schedule: scheduleData } : null,
+    scheduleNames,
+    scheduleCourtNames: scheduleCourtNames,
+    roundWinners,
+    // Also save the full generateSchedule result for stats
+    fullResult: lastFullResult || null,
+  };
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function restoreState() {
+  let state;
+  try { state = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch(e) {}
+  if (!state) return false;
+
+  // Restore setup values
+  document.getElementById('numPlayers').value = state.numPlayers || 15;
+  document.getElementById('numCourts').value = state.numCourts || 3;
+  document.getElementById('numRounds').value = state.numRounds || 15;
+  document.getElementById('preferMixed').checked = state.preferMixed !== false;
+
+  // Restore grids
+  playerData = state.playerData || [];
+  courtData = state.courtData || [];
+  buildPlayerGrid(state.numPlayers || 15);
+  buildCourtInputs(state.numCourts || 3);
+
+  // Restore schedule if it was generated
+  if (state.hasSchedule && state.scheduleResult && state.scheduleNames) {
+    scheduleCourtNames = state.scheduleCourtNames || [];
+    lastFullResult = state.fullResult || null;
+    renderSchedule(state.scheduleResult, state.scheduleNames, scheduleCourtNames);
+    if (lastFullResult) renderStats(lastFullResult, state.scheduleNames);
+    roundWinners = state.roundWinners || {};
+    updateRoundStates();
+    document.getElementById('output').style.display = 'block';
+  }
+
+  return true;
+}
+
+function clearSavedState() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+}
+
 // --- Dynamic grid builders ---
 let currentPlayerCount = 15;
 let currentCourtCount = 3;
@@ -1297,7 +1358,11 @@ function buildPlayerGrid(count) {
       this.classList.remove('input-error');
       const g = guessGender(this.value);
       if (g) document.getElementById(`g${this.id.slice(1)}${g.toLowerCase()}`).checked = true;
+      saveState();
     });
+    // Save on gender toggle change
+    document.getElementById(`g${i}m`).addEventListener('change', saveState);
+    document.getElementById(`g${i}f`).addEventListener('change', saveState);
   }
   currentPlayerCount = count;
 }
@@ -1311,7 +1376,7 @@ function buildCourtInputs(count) {
     input.type = 'number'; input.className = 'court-num-input';
     input.id = `court${i}`; input.min = 1; input.max = 99;
     input.value = i < courtData.length ? courtData[i] : (i + 1);
-    input.addEventListener('input', function() { this.classList.remove('input-error'); });
+    input.addEventListener('input', function() { this.classList.remove('input-error'); saveState(); });
     container.appendChild(input);
   }
   currentCourtCount = count;
@@ -1339,19 +1404,25 @@ document.getElementById('numPlayers').addEventListener('input', function() {
   this.classList.remove('input-error');
   const v = parseInt(this.value);
   if (v >= 4 && v <= 40) buildPlayerGrid(v);
+  saveState();
 });
 document.getElementById('numCourts').addEventListener('input', function() {
   this.classList.remove('input-error');
   const v = parseInt(this.value);
   if (v >= 1 && v <= 10) buildCourtInputs(v);
+  saveState();
 });
 document.getElementById('numRounds').addEventListener('input', function() {
   this.classList.remove('input-error');
+  saveState();
 });
+document.getElementById('preferMixed').addEventListener('change', saveState);
 
-// Initial build
-buildPlayerGrid(15);
-buildCourtInputs(3);
+// Initial build — restore saved state or start fresh
+if (!restoreState()) {
+  buildPlayerGrid(15);
+  buildCourtInputs(3);
+}
 
 const AMERICAN_FEMALE = [
   'abby','abigail','ada','adele','adeline','adriana','alexa','alexandra','alexis','alice',
@@ -1469,6 +1540,12 @@ function fillDefaults() {
     document.getElementById(`p${i}`).value = picks[i].name;
     document.getElementById(`g${i}${picks[i].gender.toLowerCase()}`).checked = true;
   }
+  saveState();
+}
+
+function newTournament() {
+  clearSavedState();
+  location.reload();
 }
 
 function getPlayerNames() {
@@ -1713,10 +1790,13 @@ function generate() {
     courtNames.push(`Court ${document.getElementById('court' + i).value || (i + 1)}`);
   }
   const scheduleResult = generateSchedule(numPlayers, numCourts, rounds, iterations, genders, preferMixed);
+  lastFullResult = scheduleResult;
+  scheduleCourtNames = courtNames;
   renderSchedule(scheduleResult, names, courtNames);
   renderStats(scheduleResult, names);
   document.getElementById('output').style.display = 'block';
   document.getElementById('scheduleSection').scrollIntoView({ behavior: 'smooth' });
+  saveState();
 }
 
 let totalRounds = 0;
@@ -1724,6 +1804,8 @@ let numCourtsInSchedule = 0;
 let roundWinners = {}; // roundWinners[roundNum][courtIdx] = 'A' | 'B' | null
 let scheduleData = null; // stored for leaderboard lookups
 let scheduleNames = null;
+let scheduleCourtNames = []; // stored for persistence
+let lastFullResult = null; // stored for stats re-render
 
 function pickWinner(roundNum, courtIdx, team) {
   if (!roundWinners[roundNum]) roundWinners[roundNum] = {};
@@ -1734,6 +1816,7 @@ function pickWinner(roundNum, courtIdx, team) {
     roundWinners[roundNum][courtIdx] = team;
   }
   updateRoundStates();
+  saveState();
 }
 
 function isRoundComplete(roundNum) {
