@@ -565,15 +565,15 @@
     <div class="card-title">Setup</div>
     <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.25rem;">
       <div style="display:flex; align-items:center; gap:0.6rem;">
-        <label class="option-label" for="numPlayers">Players</label>
+        <label class="option-label" for="numPlayers">Number of Players</label>
         <input type="number" class="rounds-input" id="numPlayers" value="15" min="4" max="40">
       </div>
       <div style="display:flex; align-items:center; gap:0.6rem;">
-        <label class="option-label" for="numCourts">Courts</label>
+        <label class="option-label" for="numCourts">Number of Courts</label>
         <input type="number" class="rounds-input" id="numCourts" value="3" min="1" max="10">
       </div>
       <div style="display:flex; align-items:center; gap:0.6rem;">
-        <label class="option-label" for="numRounds">Rounds</label>
+        <label class="option-label" for="numRounds">Number of Rounds</label>
         <input type="number" class="rounds-input" id="numRounds" value="15" min="1" max="30">
       </div>
     </div>
@@ -592,7 +592,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title">Courts</div>
+    <div class="card-title">Court Numbers</div>
     <div class="court-inputs" id="courtInputs"></div>
   </div>
 
@@ -600,7 +600,7 @@
     <div class="controls" style="margin-top:0;">
       <div class="spacer"></div>
       <button class="btn btn-danger" onclick="newTournament()">Reset Tool</button>
-      <button class="btn btn-secondary" onclick="fillDefaults()">Fill Random</button>
+      <button class="btn" style="background:#8b5cf6; color:#fff; border:none;" onclick="fillDefaults()">Fill Random Names</button>
       <button class="btn btn-primary" onclick="generate()">Generate Schedule</button>
     </div>
   </div>
@@ -1620,8 +1620,8 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
         const b = c * 4;
         const a1 = perm[b], a2 = perm[b + 1], b1 = perm[b + 2], b2 = perm[b + 3];
 
-        score -= partnerCount[a1][a2] * 15;
-        score -= partnerCount[b1][b2] * 15;
+        score -= partnerCount[a1][a2] * 50;
+        score -= partnerCount[b1][b2] * 50;
 
         score -= opponentCount[a1][b1] * 6;
         score -= opponentCount[a1][b2] * 6;
