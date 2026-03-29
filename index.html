@@ -45,7 +45,7 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 0.6rem;
   }
-  .player-input { display: flex; align-items: center; gap: 0.5rem; }
+  .player-input { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .player-num {
     font-size: 0.7rem; font-weight: 600; color: #94a3b8;
     min-width: 1.5rem; text-align: right; font-variant-numeric: tabular-nums;
@@ -63,6 +63,10 @@
     box-shadow: 0 0 0 3px rgba(96,165,250,0.1);
   }
   .player-input input[type="text"]::placeholder { color: #64748b; }
+  .dup-warning {
+    font-size: 0.7rem; color: #f59e0b; margin-top: -0.2rem;
+    width: 100%; padding-left: 2rem;
+  }
 
   /* Gender Toggle */
   .gender-toggle {
@@ -1276,6 +1280,7 @@ let numCourtsInSchedule = 0;
 let roundWinners = {};
 let scheduleData = null;
 let scheduleNames = null;
+let roundNamesMap = {};  // roundNumber -> [...names], for per-round substitution tracking
 let scheduleCourtNames = [];
 let lastFullResult = null;
 
@@ -1296,6 +1301,7 @@ function saveState() {
     hasSchedule: !!scheduleData,
     scheduleResult: scheduleData ? { schedule: scheduleData } : null,
     scheduleNames,
+    roundNamesMap,
     scheduleCourtNames: scheduleCourtNames,
     roundWinners,
     // Also save the full generateSchedule result for stats
@@ -1325,7 +1331,8 @@ function restoreState() {
   if (state.hasSchedule && state.scheduleResult && state.scheduleNames) {
     scheduleCourtNames = state.scheduleCourtNames || [];
     lastFullResult = state.fullResult || null;
-    renderSchedule(state.scheduleResult, state.scheduleNames, scheduleCourtNames);
+    roundNamesMap = state.roundNamesMap || {};
+    renderSchedule(state.scheduleResult, state.scheduleNames, scheduleCourtNames, !!state.roundNamesMap);
     if (lastFullResult) renderStats(lastFullResult, state.scheduleNames);
     roundWinners = state.roundWinners || {};
     updateRoundStates();
@@ -1371,6 +1378,42 @@ function buildPlayerGrid(count, skipSave) {
       this.classList.remove('input-error');
       const g = guessGender(this.value);
       if (g) document.getElementById(`g${this.id.slice(1)}${g.toLowerCase()}`).checked = true;
+      // Live-update schedule if one exists (substitution: only current + future rounds)
+      const idx = parseInt(this.id.slice(1));
+      if (scheduleNames && idx < scheduleNames.length) {
+        const newName = this.value || `Player ${idx + 1}`;
+        // Warn if duplicate name exists (check all round names + current player inputs)
+        const allNames = [];
+        for (let r = 1; r <= totalRounds; r++) {
+          const rn = roundNamesMap[r] || scheduleNames;
+          rn.forEach((n, i) => { if (i !== idx) allNames.push(n); });
+        }
+        // Remove any existing warning
+        const existingWarn = this.parentElement.querySelector('.dup-warning');
+        if (existingWarn) existingWarn.remove();
+        if (newName && allNames.includes(newName)) {
+          this.style.outline = '2px solid #f59e0b';
+          const warn = document.createElement('div');
+          warn.className = 'dup-warning';
+          warn.textContent = `"${newName}" already exists, please add a last name initial or else duplicate names will merge on the leaderboard!`;
+          this.parentElement.appendChild(warn);
+        } else {
+          this.style.outline = '';
+        }
+        scheduleNames[idx] = newName;
+        // Find current round (first incomplete)
+        let curRound = totalRounds + 1;
+        for (let r = 1; r <= totalRounds; r++) {
+          if (!isRoundComplete(r)) { curRound = r; break; }
+        }
+        // Update only current and future rounds in roundNamesMap
+        for (let r = curRound; r <= totalRounds; r++) {
+          if (!roundNamesMap[r]) roundNamesMap[r] = [...scheduleNames];
+          roundNamesMap[r][idx] = newName;
+        }
+        renderSchedule({ schedule: scheduleData }, scheduleNames, scheduleCourtNames, true);
+        if (lastFullResult) renderStats(lastFullResult, scheduleNames);
+      }
       saveState();
     });
     // Save on gender toggle change
@@ -1877,26 +1920,33 @@ function renderLeaderboard() {
   const section = document.getElementById('leaderboardSection');
   if (!scheduleData || !scheduleNames) { section.innerHTML = ''; return; }
 
-  // Compute wins/losses per player index
-  const n = scheduleNames.length;
-  const wins = new Array(n).fill(0);
-  const losses = new Array(n).fill(0);
+  // Compute wins/losses per player NAME (not index) to support substitutions
+  const playerStats = {};  // name -> {wins, losses}
 
   for (const round of scheduleData) {
     const rw = roundWinners[round.round];
     if (!rw) continue;
+    const rNames = roundNamesMap[round.round] || scheduleNames;
     round.courts.forEach((court, ci) => {
       const w = rw[ci];
       if (!w) return;
       const winTeam = w === 'A' ? court.teamA : court.teamB;
       const loseTeam = w === 'A' ? court.teamB : court.teamA;
-      winTeam.forEach(p => wins[p]++);
-      loseTeam.forEach(p => losses[p]++);
+      winTeam.forEach(p => {
+        const name = rNames[p];
+        if (!playerStats[name]) playerStats[name] = { wins: 0, losses: 0 };
+        playerStats[name].wins++;
+      });
+      loseTeam.forEach(p => {
+        const name = rNames[p];
+        if (!playerStats[name]) playerStats[name] = { wins: 0, losses: 0 };
+        playerStats[name].losses++;
+      });
     });
   }
 
   // Check if any results exist
-  const totalGames = wins.reduce((a, b) => a + b, 0);
+  const totalGames = Object.values(playerStats).reduce((a, b) => a + b.wins, 0);
   if (totalGames === 0) {
     section.innerHTML = `<div class="leaderboard"><h2>Leaderboard</h2>
       <div class="card" style="text-align:center;padding:2rem;">
@@ -1906,10 +1956,10 @@ function renderLeaderboard() {
   }
 
   // Build player rows sorted by win%, then wins, then fewer losses
-  const players = scheduleNames.map((name, i) => ({
-    name, wins: wins[i], losses: losses[i],
-    total: wins[i] + losses[i],
-    pct: (wins[i] + losses[i]) > 0 ? wins[i] / (wins[i] + losses[i]) : 0
+  const players = Object.entries(playerStats).map(([name, s]) => ({
+    name, wins: s.wins, losses: s.losses,
+    total: s.wins + s.losses,
+    pct: (s.wins + s.losses) > 0 ? s.wins / (s.wins + s.losses) : 0
   }));
   players.sort((a, b) => b.pct - a.pct || b.wins - a.wins || a.losses - b.losses);
 
@@ -1943,11 +1993,18 @@ function renderLeaderboard() {
   section.innerHTML = html;
 }
 
-function renderSchedule(result, names, courtNames) {
+function renderSchedule(result, names, courtNames, preserveWinners) {
   const section = document.getElementById('scheduleSection');
   totalRounds = result.schedule.length;
   numCourtsInSchedule = courtNames.length;
-  roundWinners = {};
+  if (!preserveWinners) {
+    roundWinners = {};
+    roundNamesMap = {};
+    // Initialize per-round names from the original names
+    for (let r = 1; r <= totalRounds; r++) {
+      roundNamesMap[r] = [...names];
+    }
+  }
   scheduleData = result.schedule;
   scheduleNames = names;
 
@@ -1956,7 +2013,8 @@ function renderSchedule(result, names, courtNames) {
   html += '<div id="currentRoundBanner" class="current-round-banner"></div>';
 
   for (const round of result.schedule) {
-    const sitOutNames = round.sitOuts.map(i => names[i]).join(', ');
+    const rNames = roundNamesMap[round.round] || names;
+    const sitOutNames = round.sitOuts.map(i => rNames[i]).join(', ');
     html += `<div class="round" id="round-${round.round}">
       <div class="round-header">
         <span class="round-title">Round ${round.round}</span>
@@ -1970,9 +2028,9 @@ function renderSchedule(result, names, courtNames) {
       html += `<div class="court">
         <div class="court-label">${courtNames[ci]}</div>
         <div class="matchup">
-          <span class="team team-a" id="r${round.round}c${ci}a" onclick="pickWinner(${round.round},${ci},'A')"><span class="serve-badge">SERVE</span>${names[court.teamA[0]]} &amp; ${names[court.teamA[1]]}</span>
+          <span class="team team-a" id="r${round.round}c${ci}a" onclick="pickWinner(${round.round},${ci},'A')"><span class="serve-badge">SERVE</span>${rNames[court.teamA[0]]} &amp; ${rNames[court.teamA[1]]}</span>
           <span class="vs">vs</span>
-          <span class="team team-b" id="r${round.round}c${ci}b" onclick="pickWinner(${round.round},${ci},'B')">${names[court.teamB[0]]} &amp; ${names[court.teamB[1]]}</span>
+          <span class="team team-b" id="r${round.round}c${ci}b" onclick="pickWinner(${round.round},${ci},'B')">${rNames[court.teamB[0]]} &amp; ${rNames[court.teamB[1]]}</span>
         </div>
       </div>`;
     });
