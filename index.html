@@ -51,7 +51,7 @@
     min-width: 1.5rem; text-align: right; font-variant-numeric: tabular-nums;
   }
   .player-input input[type="text"] {
-    flex: 1; padding: 0.55rem 0.85rem; border-radius: 10px;
+    flex: 1; min-width: 0; padding: 0.55rem 0.85rem; border-radius: 10px;
     border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.04); color: #e2e8f0;
     font-family: inherit; font-size: 0.85rem; outline: none;
@@ -72,8 +72,9 @@
   .gender-toggle {
     display: flex; border-radius: 8px; overflow: hidden; flex-shrink: 0;
     border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03);
+    position: relative;
   }
-  .gender-toggle input { display: none; }
+  .gender-toggle input { position: absolute; opacity: 0; pointer-events: none; }
   .gender-toggle label {
     padding: 0.35rem 0.6rem; font-size: 0.7rem; font-weight: 600;
     cursor: pointer; color: #94a3b8; min-width: unset; text-align: center;
@@ -450,10 +451,95 @@
   #output { display: none; }
 
   @media (max-width: 640px) {
+    /* Layout */
     body { padding: 1.5rem 0.75rem; }
-    .player-grid { grid-template-columns: 1fr; }
-    .courts { grid-template-columns: 1fr; }
     .card { padding: 1.25rem; }
+
+    /* Header */
+    .header { margin-bottom: 1.5rem; }
+    .header h1 { font-size: 1.5rem; }
+    .header p { font-size: 0.8rem; }
+    .card-title { font-size: 0.65rem; margin-bottom: 1rem; }
+
+    /* Setup inputs — 44px touch targets, 16px font prevents iOS zoom */
+    .rounds-input {
+      min-height: 44px; font-size: 1rem; padding: 0.6rem 0.5rem;
+    }
+    .toggle-switch { width: 44px; height: 24px; }
+    .toggle-track::after { width: 18px; height: 18px; }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(20px); }
+
+    /* Player grid */
+    .player-grid { grid-template-columns: 1fr; gap: 0.5rem; }
+    .player-input input[type="text"] {
+      min-height: 44px; font-size: 1rem; padding: 0.6rem 0.75rem;
+    }
+    .gender-toggle label {
+      padding: 0.5rem 0.7rem; font-size: 0.75rem;
+      min-height: 44px; display: flex; align-items: center; justify-content: center;
+    }
+
+    /* Court number inputs */
+    .court-num-input {
+      min-height: 44px; width: 64px; font-size: 1rem; padding: 0.6rem;
+    }
+
+    /* Control buttons — stack full-width */
+    .controls { flex-direction: column; gap: 0.6rem; }
+    .controls .spacer { display: none; }
+    .controls .btn {
+      width: 100%; min-height: 48px; font-size: 0.95rem; padding: 0.75rem 1rem;
+    }
+
+    /* Schedule header */
+    .schedule-header { flex-wrap: wrap; gap: 0.5rem; }
+    .schedule-header h2 { font-size: 1.1rem; }
+    .btn-export { min-height: 40px; padding: 0.5rem 1rem; font-size: 0.8rem; }
+
+    /* Current round banner */
+    .current-round-banner { padding: 0.7rem 1rem; font-size: 0.85rem; }
+
+    /* Round headers — wrap bye info to new line */
+    .round-header { flex-wrap: wrap; gap: 0.4rem; }
+    .round-header-right { margin-left: 0; width: 100%; }
+    .round-title { font-size: 0.9rem; }
+    .sit-out { font-size: 0.72rem; }
+    .round { padding: 1rem; }
+    .court { padding: 0.7rem; }
+    .court-label { font-size: 0.8rem; margin-bottom: 0.5rem; }
+    .courts { grid-template-columns: 1fr; }
+
+    /* Matchups — stack teams vertically */
+    .matchup {
+      flex-direction: column; align-items: stretch; gap: 0.35rem; font-size: 0.9rem;
+    }
+    .matchup .vs { text-align: center; font-size: 0.65rem; padding: 0.1rem 0; }
+    .matchup .team {
+      min-height: 44px; display: flex; align-items: center; justify-content: center;
+      padding: 0.5rem 0.75rem; font-size: 0.9rem;
+    }
+
+    /* Leaderboard — horizontal scroll, compact cells */
+    .leaderboard h2 { font-size: 1.1rem; }
+    .leaderboard-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .leaderboard-table th, .leaderboard-table td { padding: 0.55rem 0.5rem; font-size: 0.78rem; }
+    .leaderboard-table th { font-size: 0.62rem; }
+    .lb-bar-cell { width: 20%; }
+    .lb-name { margin-left: 0.25rem; }
+
+    /* Stats */
+    .stats-toggle h2 { font-size: 1.1rem; }
+    .stats-grid { grid-template-columns: 1fr; gap: 0.75rem; }
+    .stat-card { padding: 1.25rem; }
+    .stat-card h3 { font-size: 0.65rem; }
+
+    /* Matrix */
+    .matrix-container { padding: 1rem; }
+    table.matrix { font-size: 0.65rem; }
+    table.matrix th, table.matrix td { padding: 0.2rem 0.3rem; min-width: 1.6rem; }
+
+    /* Error banner */
+    .error-banner { font-size: 0.8rem; padding: 0.65rem 0.85rem; }
   }
 
   /* Print styles */
