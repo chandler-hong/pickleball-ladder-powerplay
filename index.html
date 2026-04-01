@@ -450,6 +450,24 @@
 
   #output { display: none; }
 
+  /* Loading overlay */
+  .generating-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(8,12,20,0.8); display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 1rem;
+  }
+  .generating-spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 3px solid rgba(96,165,250,0.2);
+    border-top-color: #60a5fa;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .generating-text {
+    font-size: 0.9rem; font-weight: 600; color: #94a3b8;
+  }
+
   @media (max-width: 640px) {
     /* Layout */
     body { padding: 1.5rem 0.75rem; }
@@ -708,6 +726,13 @@
 </div>
 
 <script>
+// --- HTML escape helper (prevents XSS from player names) ---
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
 // --- Gender detection from first name ---
 const FEMALE_NAMES = new Set([
   // --- English / American ---
@@ -1432,6 +1457,13 @@ function clearSavedState() {
   try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
 }
 
+// --- Debounce helper ---
+let _debounceTimers = {};
+function debounce(key, fn, delay) {
+  clearTimeout(_debounceTimers[key]);
+  _debounceTimers[key] = setTimeout(fn, delay);
+}
+
 // --- Dynamic grid builders ---
 let currentPlayerCount = 15;
 let currentCourtCount = 3;
@@ -1481,7 +1513,7 @@ function buildPlayerGrid(count, skipSave) {
           this.style.outline = '2px solid #f59e0b';
           const warn = document.createElement('div');
           warn.className = 'dup-warning';
-          warn.textContent = `"${newName}" already exists, please add a last name initial or else duplicate names will merge on the leaderboard!`;
+          warn.textContent = '"' + newName + '" already exists, please add a last name initial or else duplicate names will merge on the leaderboard!';
           this.parentElement.appendChild(warn);
         } else {
           this.style.outline = '';
@@ -1497,8 +1529,10 @@ function buildPlayerGrid(count, skipSave) {
           if (!roundNamesMap[r]) roundNamesMap[r] = [...scheduleNames];
           roundNamesMap[r][idx] = newName;
         }
-        renderSchedule({ schedule: scheduleData }, scheduleNames, scheduleCourtNames, true);
-        if (lastFullResult) renderStats(lastFullResult, scheduleNames);
+        debounce('scheduleRender', () => {
+          renderSchedule({ schedule: scheduleData }, scheduleNames, scheduleCourtNames, true);
+          if (lastFullResult) renderStats(lastFullResult, scheduleNames);
+        }, 180);
       }
       saveState();
     });
@@ -1564,95 +1598,9 @@ document.getElementById('preferMixed').addEventListener('change', saveState);
 buildPlayerGrid(15);
 buildCourtInputs(3);
 
-const AMERICAN_FEMALE = [
-  'abby','abigail','ada','adele','adeline','adriana','alexa','alexandra','alexis','alice',
-  'alicia','allison','alyssa','amanda','amber','amelia','amy','andrea','angela','angelina',
-  'anna','annabelle','anne','annie','april','ariana','ashley','aubrey','audrey','aurora',
-  'autumn','ava','avery','bailey','barbara','beatrice','bella','beth','bethany','betty',
-  'beverly','bianca','bonnie','brandy','breanna','brenda','bridget','brittany','brooke',
-  'brooklyn','caitlin','camille','carol','caroline','carolyn','carrie','casey','cassandra',
-  'catherine','charlotte','chelsea','cheryl','chloe','christina','christine','cindy',
-  'claire','clara','colleen','courtney','crystal','cynthia','daisy','dana','danielle',
-  'daphne','dawn','deborah','delilah','denise','destiny','diana','diane','donna','dorothy',
-  'eileen','elaine','elena','elizabeth','ella','ellen','ellie','emily','emma','erica',
-  'erin','esther','eva','evelyn','eve','faith','faye','felicia','fiona','florence',
-  'frances','gabriella','gail','georgia','grace','gwen','hailey','hannah','harper',
-  'harriet','hayley','hazel','heather','heidi','helen','hillary','holly','hope','ida',
-  'iris','isabella','ivy','jackie','jacqueline','jade','jamie','jane','janet','janice',
-  'jasmine','jean','jenna','jennifer','jenny','jessica','jill','joan','joanna','jocelyn',
-  'jordan','josephine','joy','joyce','judith','judy','julia','julie','june','justine',
-  'kaitlyn','karen','kate','katherine','kathleen','kathryn','katie','kayla','kaylee',
-  'kelly','kelsey','kendra','kennedy','kim','kimberly','kristen','kristin','kylie','lacey',
-  'laura','lauren','layla','leah','leigh','lena','leslie','lily','linda','lindsay','lisa',
-  'logan','lori','lucy','luna','lydia','lynn','mackenzie','madeline','madison','maggie',
-  'mallory','mandy','margaret','maria','marie','marilyn','marissa','martha','mary','maya',
-  'megan','melanie','melissa','melody','meredith','mia','michaela','michelle','mikayla',
-  'mildred','millie','miranda','misty','molly','monica','morgan','mya','nancy','naomi',
-  'natalie','natasha','nicole','nina','nora','olivia','paige','pamela','patricia','patty',
-  'paula','pearl','peggy','penelope','penny','phoebe','piper','quinn','rachel','reagan',
-  'rebecca','reese','regina','renee','riley','rita','robin','rosa','rose','rosemary',
-  'ruby','ruth','rylee','sabrina','sadie','sally','samantha','sandra','sara','sarah',
-  'savannah','scarlett','shannon','sharon','shelby','sierra','skylar','sofia','sophia',
-  'sophie','stacy','stella','stephanie','sue','summer','susan','suzanne','sydney','sylvia',
-  'tammy','tanya','tara','taylor','teresa','tessa','theresa','tiffany','tina','tracey',
-  'tracy','valentina','valerie','vanessa','veronica','victoria','violet','virginia',
-  'vivian','wendy','whitney','willow','zoe','zoey',
-];
-const AMERICAN_MALE = [
-  'aaron','adam','adrian','aiden','alan','albert','alex','alexander','andrew','angel',
-  'anthony','archer','archie','arthur','asher','ashton','austin','axel','bailey','barry',
-  'beau','ben','benjamin','bennett','billy','blake','bobby','brad','bradley','brady',
-  'brandon','braxton','brendan','brent','brett','brian','brock','brody','brooks','bruce',
-  'bryan','bryce','caleb','calvin','cameron','carl','carlos','carter','casey','chad',
-  'charles','charlie','chase','chester','chris','christian','christopher','clark','cody',
-  'cole','colin','colton','connor','cooper','corey','craig','cruz','curtis','dakota',
-  'dale','dallas','dalton','damian','dan','daniel','danny','darren','dave','david','dean',
-  'declan','dennis','derek','devin','diego','dillon','dominic','donald','donovan','doug',
-  'douglas','drake','drew','duncan','dustin','dylan','earl','easton','eddie','edward',
-  'eli','elijah','elliot','elvis','eric','erik','ernest','ethan','eugene','evan','everett',
-  'ezra','felix','finn','fletcher','floyd','ford','forrest','francis','frank','franklin',
-  'fred','frederick','gabriel','gage','garrett','gary','gavin','gene','george','gerald',
-  'glen','gordon','graham','grant','grayson','greg','gregory','griffin','gus','hank',
-  'harold','harris','harrison','harry','harvey','hayden','heath','henry','herbert','howard',
-  'hudson','hugh','hugo','hunter','ian','isaac','isaiah','ivan','jack','jackson','jacob',
-  'jaden','jake','james','jameson','jason','jasper','javier','jay','jayden','jeff',
-  'jeffrey','jeremiah','jeremy','jerome','jerry','jesse','jim','jimmy','joe','joel','joey',
-  'john','johnny','jon','jonah','jonathan','jordan','jorge','jose','joseph','josh','joshua',
-  'josiah','juan','jude','julian','julio','justin','kai','kaleb','kane','karl','keaton',
-  'keith','kelly','kenneth','kenny','kent','kevin','kieran','kirk','knox','kyle','lance',
-  'landon','larry','lawrence','lee','leo','leon','leonard','levi','lewis','liam','lincoln',
-  'logan','lonnie','lorenzo','louis','luca','lucas','luis','luke','luther','mack','malik',
-  'manuel','marc','marco','marcus','mario','mark','marshall','martin','marvin','mason',
-  'matt','matthew','maverick','max','maxwell','micah','michael','miguel','mike','miles',
-  'milo','mitchell','morgan','nathan','nathaniel','neal','neil','nelson','nicholas','nick',
-  'noah','noel','nolan','norman','oliver','omar','orlando','oscar','otis','otto','owen',
-  'pablo','parker','patrick','paul','pedro','percy','perry','pete','peter','peyton','phil',
-  'philip','pierce','porter','preston','quentin','quincy','quinn','rafael','ralph','ramon',
-  'randy','ray','raymond','reed','reid','rene','rex','rhett','ricardo','richard','rick',
-  'riley','river','rob','robert','roberto','rocco','rodney','roger','roman','ron','ronald',
-  'ronnie','rory','ross','roy','ruben','rudy','russell','ryan','ryder','sam','samuel',
-  'santiago','saul','sawyer','scott','sean','sebastian','seth','shane','shaun','shawn',
-  'sheldon','simon','skyler','solomon','sonny','spencer','stanley','stefan','stephen',
-  'sterling','steve','steven','stewart','stuart','ted','terry','theodore','thomas','tim',
-  'timothy','tobias','toby','todd','tom','tommy','tony','travis','trent','trevor','trey',
-  'tristan','troy','tucker','tyler','tyson','victor','vince','vincent','wade','walker',
-  'wallace','walter','warren','wayne','wesley','weston','will','william','willie','wilson',
-  'winston','wyatt','xavier','zachary','zane',
-];
-
 function pickRandomNames(count) {
-  const fList = [...AMERICAN_FEMALE];
-  const mList = [...AMERICAN_MALE];
-  // Shuffle both lists
-  for (let i = fList.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [fList[i], fList[j]] = [fList[j], fList[i]];
-  }
-  for (let i = mList.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [mList[i], mList[j]] = [mList[j], mList[i]];
-  }
-  // Alternate M/F, capitalize first letter
+  const fList = shuffle([...FEMALE_NAMES]);
+  const mList = shuffle([...MALE_NAMES]);
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const result = [];
   const usedNames = new Set();
@@ -1684,6 +1632,7 @@ function fillDefaults() {
 }
 
 function newTournament() {
+  if (!confirm('Reset everything? All player names, schedule, and results will be cleared.')) return;
   clearSavedState();
   location.reload();
 }
@@ -1728,9 +1677,10 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
   for (let r = 0; r < numRounds; r++) {
     // Select sit-outs: those who have sat out least (to balance)
     const indices = Array.from({length: n}, (_, i) => i);
+    const randKeys = indices.map(() => Math.random());
     indices.sort((a, b) => {
       if (sitOutCount[a] !== sitOutCount[b]) return sitOutCount[a] - sitOutCount[b];
-      return Math.random() - 0.5;
+      return randKeys[a] - randKeys[b];
     });
     const sitOuts = numSitOuts > 0 ? new Set(indices.slice(0, numSitOuts)) : new Set();
     const playing = indices.filter(i => !sitOuts.has(i));
@@ -1866,7 +1816,7 @@ function validate() {
     if (seen[lower] !== undefined) {
       flagField(document.getElementById(`p${i}`));
       flagField(document.getElementById(`p${seen[lower]}`));
-      errors.push(`"${names[i]}" appears more than once \u2014 add a last name initial (e.g. "${names[i]} A.")`);
+      errors.push(`"${esc(names[i])}" appears more than once \u2014 add a last name initial (e.g. "${esc(names[i])} A.")`);
     } else {
       seen[lower] = i;
     }
@@ -1929,14 +1879,26 @@ function generate() {
   for (let i = 0; i < numCourts; i++) {
     courtNames.push(`Court ${document.getElementById('court' + i).value || (i + 1)}`);
   }
-  const scheduleResult = generateSchedule(numPlayers, numCourts, rounds, iterations, genders, preferMixed);
-  lastFullResult = scheduleResult;
-  scheduleCourtNames = courtNames;
-  renderSchedule(scheduleResult, names, courtNames);
-  renderStats(scheduleResult, names);
-  document.getElementById('output').style.display = 'block';
-  document.getElementById('scheduleSection').scrollIntoView({ behavior: 'smooth' });
-  saveState();
+
+  // Show loading overlay, defer heavy work so the browser can paint
+  const overlay = document.createElement('div');
+  overlay.className = 'generating-overlay';
+  overlay.innerHTML = '<div class="generating-spinner"></div><div class="generating-text">Generating schedule\u2026</div>';
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      const scheduleResult = generateSchedule(numPlayers, numCourts, rounds, iterations, genders, preferMixed);
+      lastFullResult = scheduleResult;
+      scheduleCourtNames = courtNames;
+      renderSchedule(scheduleResult, names, courtNames);
+      renderStats(scheduleResult, names);
+      document.getElementById('output').style.display = 'block';
+      document.getElementById('scheduleSection').scrollIntoView({ behavior: 'smooth' });
+      saveState();
+      overlay.remove();
+    }, 20);
+  });
 }
 
 // (totalRounds, numCourtsInSchedule, roundWinners, scheduleData, scheduleNames,
@@ -2006,8 +1968,9 @@ function renderLeaderboard() {
   const section = document.getElementById('leaderboardSection');
   if (!scheduleData || !scheduleNames) { section.innerHTML = ''; return; }
 
-  // Compute wins/losses per player NAME (not index) to support substitutions
-  const playerStats = {};  // name -> {wins, losses}
+  // Compute wins/losses keyed by (slotIndex, name) to avoid merging stats
+  // when a substitute shares a name with a player in a different slot
+  const identityStats = {};  // "slotIdx:name" -> {name, wins, losses}
 
   for (const round of scheduleData) {
     const rw = roundWinners[round.round];
@@ -2019,17 +1982,18 @@ function renderLeaderboard() {
       const winTeam = w === 'A' ? court.teamA : court.teamB;
       const loseTeam = w === 'A' ? court.teamB : court.teamA;
       winTeam.forEach(p => {
-        const name = rNames[p];
-        if (!playerStats[name]) playerStats[name] = { wins: 0, losses: 0 };
-        playerStats[name].wins++;
+        const key = p + ':' + rNames[p];
+        if (!identityStats[key]) identityStats[key] = { name: rNames[p], wins: 0, losses: 0 };
+        identityStats[key].wins++;
       });
       loseTeam.forEach(p => {
-        const name = rNames[p];
-        if (!playerStats[name]) playerStats[name] = { wins: 0, losses: 0 };
-        playerStats[name].losses++;
+        const key = p + ':' + rNames[p];
+        if (!identityStats[key]) identityStats[key] = { name: rNames[p], wins: 0, losses: 0 };
+        identityStats[key].losses++;
       });
     });
   }
+  const playerStats = identityStats;
 
   // Check if any results exist
   const totalGames = Object.values(playerStats).reduce((a, b) => a + b.wins, 0);
@@ -2042,8 +2006,8 @@ function renderLeaderboard() {
   }
 
   // Build player rows sorted by win%, then wins, then fewer losses
-  const players = Object.entries(playerStats).map(([name, s]) => ({
-    name, wins: s.wins, losses: s.losses,
+  const players = Object.values(playerStats).map(s => ({
+    name: s.name, wins: s.wins, losses: s.losses,
     total: s.wins + s.losses,
     pct: (s.wins + s.losses) > 0 ? s.wins / (s.wins + s.losses) : 0
   }));
@@ -2064,7 +2028,7 @@ function renderLeaderboard() {
     const rank = idx + 1;
 
     html += `<tr>
-      <td>${medal}<span class="lb-rank">${rank}.</span><span class="lb-name">${p.name}</span></td>
+      <td>${medal}<span class="lb-rank">${rank}.</span><span class="lb-name">${esc(p.name)}</span></td>
       <td class="lb-wins">${p.wins}</td>
       <td class="lb-losses">${p.losses}</td>
       <td class="lb-pct">${p.total > 0 ? pct + '%' : '<span class="lb-empty">\u2014</span>'}</td>
@@ -2100,7 +2064,7 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
 
   for (const round of result.schedule) {
     const rNames = roundNamesMap[round.round] || names;
-    const sitOutNames = round.sitOuts.map(i => rNames[i]).join(', ');
+    const sitOutNames = round.sitOuts.map(i => esc(rNames[i])).join(', ');
     html += `<div class="round" id="round-${round.round}">
       <div class="round-header">
         <span class="round-title">Round ${round.round}</span>
@@ -2114,9 +2078,9 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
       html += `<div class="court">
         <div class="court-label">${courtNames[ci]}</div>
         <div class="matchup">
-          <span class="team team-a" id="r${round.round}c${ci}a" onclick="pickWinner(${round.round},${ci},'A')"><span class="serve-badge">SERVE</span>${rNames[court.teamA[0]]} &amp; ${rNames[court.teamA[1]]}</span>
+          <span class="team team-a" role="button" tabindex="0" id="r${round.round}c${ci}a" onclick="pickWinner(${round.round},${ci},'A')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickWinner(${round.round},${ci},'A')}"><span class="serve-badge">SERVE</span>${esc(rNames[court.teamA[0]])} &amp; ${esc(rNames[court.teamA[1]])}</span>
           <span class="vs">vs</span>
-          <span class="team team-b" id="r${round.round}c${ci}b" onclick="pickWinner(${round.round},${ci},'B')">${rNames[court.teamB[0]]} &amp; ${rNames[court.teamB[1]]}</span>
+          <span class="team team-b" role="button" tabindex="0" id="r${round.round}c${ci}b" onclick="pickWinner(${round.round},${ci},'B')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickWinner(${round.round},${ci},'B')}">${esc(rNames[court.teamB[0]])} &amp; ${esc(rNames[court.teamB[1]])}</span>
         </div>
       </div>`;
     });
@@ -2186,7 +2150,7 @@ function renderStats(result, names) {
       if (j !== i && opponentCount[i][j] > 0) opponents.add(j);
     }
     html += `<div class="stat-row">
-      <span class="stat-name">${names[i]}</span>
+      <span class="stat-name">${esc(names[i])}</span>
       <span class="stat-value">${playCount[i]} games, ${partners.size} partners, ${opponents.size} opp${sitOutCount[i] > 0 ? `, ${sitOutCount[i]} byes` : ''}</span>
     </div>`;
   }
@@ -2203,7 +2167,7 @@ function renderStats(result, names) {
 
 function renderMatrix(title, matrix, names, n, maxVal) {
   // Short names for headers
-  const short = names.map(nm => nm.length > 6 ? nm.slice(0, 5) + '.' : nm);
+  const short = names.map(nm => esc(nm.length > 6 ? nm.slice(0, 5) + '.' : nm));
   let html = `<div class="matrix-container"><h3>${title}</h3><table class="matrix"><thead><tr><th></th>`;
   for (let j = 0; j < n; j++) html += `<th>${short[j]}</th>`;
   html += '</tr></thead><tbody>';
