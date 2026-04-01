@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PowerPlay Pickleball Ladder Tool</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -198,13 +199,20 @@
     display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem;
   }
   .schedule-header h2 { margin-bottom: 0; }
-  .btn-export {
+  .btn-export-pdf {
     font-family: inherit; font-size: 0.75rem; font-weight: 600;
     padding: 0.4rem 0.9rem; border-radius: 8px; cursor: pointer;
     border: 1px solid rgba(251,146,60,0.3); background: rgba(251,146,60,0.12);
     color: #fb923c; transition: all 0.2s ease; margin-left: auto;
   }
-  .btn-export:hover { background: rgba(251,146,60,0.22); color: #fdba74; }
+  .btn-export-pdf:hover { background: rgba(251,146,60,0.22); color: #fdba74; }
+  .btn-export-csv {
+    font-family: inherit; font-size: 0.75rem; font-weight: 600;
+    padding: 0.4rem 0.9rem; border-radius: 8px; cursor: pointer;
+    border: 1px solid rgba(52,211,153,0.3); background: rgba(52,211,153,0.12);
+    color: #34d399; transition: all 0.2s ease;
+  }
+  .btn-export-csv:hover { background: rgba(52,211,153,0.22); color: #6ee7b7; }
   .schedule h2, .stats h2 {
     font-size: 1.25rem; font-weight: 700; margin-bottom: 1.25rem;
     color: #e2e8f0; letter-spacing: -0.02em;
@@ -414,14 +422,14 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   }
   .leaderboard-table th {
-    font-size: 0.7rem; font-weight: 600; color: #4b5c72;
+    font-size: 0.65rem; font-weight: 600; color: #4b5c72;
     text-transform: uppercase; letter-spacing: 0.08em;
-    padding: 0.85rem 1rem; text-align: left;
+    padding: 0.55rem 0.5rem; text-align: left; white-space: nowrap;
     border-bottom: 1px solid rgba(255,255,255,0.06);
   }
   .leaderboard-table th:not(:first-child) { text-align: center; }
   .leaderboard-table td {
-    padding: 0.6rem 1rem; font-size: 0.85rem;
+    padding: 0.45rem 0.5rem; font-size: 0.8rem; white-space: nowrap;
     border-bottom: 1px solid rgba(255,255,255,0.04);
   }
   .leaderboard-table td:not(:first-child) {
@@ -438,7 +446,7 @@
   .lb-wins { color: #6ee7b7; }
   .lb-losses { color: #fca5a5; }
   .lb-pct { color: #93c5fd; }
-  .lb-bar-cell { width: 30%; }
+  .lb-bar-cell { width: 15%; }
   .lb-bar {
     display: flex; height: 6px; border-radius: 3px; overflow: hidden;
     background: rgba(255,255,255,0.04);
@@ -447,6 +455,11 @@
   .lb-bar-l { background: #ef4444; transition: width 0.3s; }
   .lb-empty { color: #2d3a4d; font-weight: 400; }
   .lb-medal { margin-right: 0.15rem; }
+  .lb-court { color: #94a3b8; }
+  .lb-streak-w { color: #6ee7b7; font-weight: 600; }
+  .lb-streak-l { color: #fca5a5; font-weight: 600; }
+  .lb-best { color: #c4b5fd; }
+  .lb-pickles { color: #fbbf24; }
 
   #output { display: none; }
 
@@ -503,20 +516,16 @@
     border-color: #60a5fa; background: rgba(96,165,250,0.06);
     box-shadow: 0 0 0 3px rgba(96,165,250,0.1);
   }
+
   .btn-swap {
     font-family: inherit; font-size: 0.65rem; font-weight: 600;
     padding: 0.25rem 0.6rem; border-radius: 6px; cursor: pointer;
-    border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05);
-    color: #64748b; transition: all 0.2s ease; letter-spacing: 0.02em;
+    border: 1px solid rgba(251,191,36,0.35); background: rgba(251,191,36,0.15);
+    color: #fbbf24; transition: all 0.2s ease; letter-spacing: 0.02em;
     -webkit-appearance: none; appearance: none;
-  }
-  .btn-swap:hover { background: rgba(255,255,255,0.1); color: #94a3b8; }
-  .btn-swap.swap-hint {
-    background: rgba(251,191,36,0.15); color: #fbbf24;
-    border-color: rgba(251,191,36,0.35);
     animation: pulse-swap 2s ease-in-out infinite;
   }
-  .btn-swap.swap-hint:hover { background: rgba(251,191,36,0.25); color: #fde68a; }
+  .btn-swap:hover { background: rgba(251,191,36,0.25); color: #fde68a; }
   @keyframes pulse-swap { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
   .btn-early {
@@ -612,7 +621,7 @@
     /* Schedule header */
     .schedule-header { flex-wrap: wrap; gap: 0.5rem; }
     .schedule-header h2 { font-size: 1.1rem; }
-    .btn-export { min-height: 40px; padding: 0.5rem 1rem; font-size: 0.8rem; }
+    .btn-export-pdf, .btn-export-csv { min-height: 40px; padding: 0.5rem 1rem; font-size: 0.8rem; }
 
     /* Current round banner */
     .current-round-banner { padding: 0.7rem 1rem; font-size: 0.85rem; }
@@ -719,8 +728,22 @@
 
     /* Hide input UI */
     .header, .card, #errorBanner, .stats, .current-round-banner,
-    .btn-export, .schedule-header .btn-export,
-    #modeCard, #ladderSetup, #ladderOutput { display: none !important; }
+    .btn-export-pdf, .btn-export-csv, .btn-swap, .btn-early,
+    #modeCard, #ladderSetup, #ladderCurrentRound { display: none !important; }
+
+    /* By default hide ladder output; show RR output */
+    #ladderOutput { display: none !important; }
+    #output { display: flex !important; flex-direction: column; }
+
+    /* Ladder print mode */
+    .print-ladder #output { display: none !important; }
+    .print-ladder #ladderOutput { display: block !important; }
+    .print-ladder #ladderLeaderboardSection { order: -1; }
+    .print-ladder #ladderHistorySection { order: 1; }
+    .print-ladder #ladderCurrentRound { display: none !important; }
+    .print-ladder #ladderHistorySection .card { display: block !important; background: #fff !important; box-shadow: none !important; border: none !important; padding: 0 !important; }
+    .print-ladder #ladderHistorySection h2 { color: #111 !important; font-size: 11pt; margin-bottom: 0.15cm; }
+    .print-ladder #ladderHistorySection .round { opacity: 1 !important; }
 
     /* Show print title */
     .print-title {
@@ -756,6 +779,11 @@
     .lb-wins { color: #065f46 !important; }
     .lb-losses { color: #991b1b !important; }
     .lb-pct { color: #1e40af !important; }
+    .lb-court { color: #374151 !important; }
+    .lb-streak-w { color: #065f46 !important; font-weight: 600; }
+    .lb-streak-l { color: #991b1b !important; font-weight: 600; }
+    .lb-best { color: #4c1d95 !important; }
+    .lb-pickles { color: #92400e !important; }
     .lb-bar { height: 4pt; }
     .lb-bar-w { background: #34d399 !important; }
     .lb-bar-l { background: #f87171 !important; }
@@ -826,6 +854,12 @@
     </div>
   </div>
 
+  <div class="print-title">
+    <h1>PowerPlay Pickleball Ladder Tool</h1>
+    <p><span id="printMode"></span> &mdash; <span id="printDate"></span></p>
+    <p style="font-size:7pt; color:#999;">Tool created by Chandler Hong and Claude Code Opus 4.6 :)</p>
+  </div>
+
   <div id="rrSetup">
   <div class="card">
     <div class="card-title">Setup</div>
@@ -872,10 +906,6 @@
   </div>
 
   <div id="errorBanner" class="error-banner"></div>
-  <div class="print-title">
-    <h1>PowerPlay Pickleball Ladder Tool</h1>
-    <p>Tool created by Chandler Hong and Claude Code Opus 4.6 :) &mdash; <span id="printDate"></span></p>
-  </div>
   <div id="output">
     <div class="schedule" id="scheduleSection"></div>
     <div id="leaderboardSection"></div>
@@ -1804,9 +1834,50 @@ document.getElementById('modeLadder').addEventListener('change', () => {
 buildPlayerGrid(15);
 buildCourtInputs(3);
 
+const AMERICAN_FEMALE = [
+  'abby','abigail','addie','alice','allison','amanda','amber','amy','andrea','angela',
+  'ann','anna','annie','ashley','audrey','barbara','becky','beth','betty','bonnie',
+  'brenda','brittany','brooke','caitlin','carol','caroline','carolyn','casey','catherine',
+  'charlotte','chelsea','cheryl','christina','christine','cindy','claire','colleen',
+  'courtney','crystal','cynthia','dana','danielle','dawn','debbie','deborah','denise',
+  'diana','diane','donna','dorothy','eileen','elaine','elizabeth','ellen','emily','emma',
+  'erica','erin','evelyn','faith','faye','fran','gail','grace','gwen','hailey','hannah',
+  'heather','heidi','helen','holly','jackie','jane','janet','janice','jean','jenna',
+  'jennifer','jenny','jessica','jill','joan','joanne','jodi','jordan','joyce','judy',
+  'julia','julie','karen','kate','katherine','kathleen','kathy','katie','kayla','kelly',
+  'kim','kimberly','kristen','kristin','laura','lauren','leah','linda','lindsay','lisa',
+  'liz','lori','lynn','madison','maggie','margaret','maria','marie','marilyn','marissa',
+  'marlene','martha','mary','maureen','megan','melissa','michelle','molly','monica','nancy',
+  'natalie','nicole','nina','olivia','pam','pamela','patricia','patty','paula','peggy',
+  'penny','rachel','rebecca','renee','robin','rosa','rose','ruth','sally','samantha',
+  'sandra','sara','sarah','shannon','sharon','shelley','sherry','shirley','sophia','stacy',
+  'stephanie','sue','susan','tammy','tara','teresa','terry','theresa','tiffany','tina',
+  'tracy','valerie','vanessa','vicki','victoria','virginia','vivian','wendy','whitney',
+];
+const AMERICAN_MALE = [
+  'aaron','adam','alan','alex','andrew','andy','anthony','austin','barry','ben','benjamin',
+  'bill','billy','blake','bob','bobby','brad','brandon','brent','brett','brian','bruce',
+  'bryan','caleb','cameron','carl','chad','charles','charlie','chase','chris','christian',
+  'christopher','chuck','clay','cody','colin','connor','corey','craig','curtis','dale',
+  'dan','daniel','danny','darren','dave','david','dean','dennis','derek','don','donald',
+  'doug','drew','dustin','dylan','ed','eddie','edward','eric','erik','ethan','evan',
+  'frank','fred','garrett','gary','george','glen','gordon','grant','greg','hank','harold',
+  'harry','henry','howard','hunter','jack','jackson','jacob','jake','james','jamie',
+  'jason','jay','jeff','jeffrey','jeremy','jerry','jesse','jim','jimmy','joe','joel',
+  'john','johnny','jon','jonathan','jordan','joseph','josh','joshua','justin','keith',
+  'ken','kenneth','kenny','kevin','kyle','lance','larry','lee','leo','logan','luke',
+  'marcus','mark','marshall','martin','matt','matthew','max','michael','mike','miles',
+  'mitchell','nathan','neil','nick','noah','owen','pat','patrick','paul','pete','peter',
+  'phil','preston','ralph','randy','ray','raymond','rich','richard','rick','rob','robert',
+  'roger','ron','ross','roy','russell','ryan','sam','samuel','scott','sean','seth','shane',
+  'shawn','spencer','steve','steven','stuart','ted','terry','tim','timothy','todd','tom',
+  'tommy','tony','travis','trevor','troy','tyler','vince','wade','walter','warren','wayne',
+  'wesley','will','william','zach','zachary',
+];
+
 function pickRandomNames(count) {
-  const fList = shuffle([...FEMALE_NAMES]);
-  const mList = shuffle([...MALE_NAMES]);
+  const fList = shuffle([...AMERICAN_FEMALE]);
+  const mList = shuffle([...AMERICAN_MALE]);
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const result = [];
   const usedNames = new Set();
@@ -2222,7 +2293,9 @@ function renderLeaderboard() {
 
   const medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
 
-  let html = '<div class="leaderboard"><h2>Leaderboard</h2>';
+  rrLeaderboardData = players;
+
+  let html = '<div class="leaderboard"><div class="schedule-header"><h2>Leaderboard</h2><button class="btn-export-pdf" onclick="exportPDF()">Export PDF</button><button class="btn-export-csv" onclick="exportCSV()">Export CSV</button></div>';
   html += '<table class="leaderboard-table"><thead><tr>';
   html += '<th>Player</th><th>W</th><th>L</th><th>Win %</th><th class="lb-bar-cell"></th>';
   html += '</tr></thead><tbody>';
@@ -2265,8 +2338,7 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
   scheduleData = result.schedule;
   scheduleNames = names;
 
-  let html = `<div class="schedule-header"><h2>Schedule</h2>
-    <button class="btn-export" onclick="exportPDF()">Export PDF</button></div>`;
+  let html = `<div class="schedule-header"><h2>Schedule</h2></div>`;
   html += '<div id="currentRoundBanner" class="current-round-banner"></div>';
 
   for (const round of result.schedule) {
@@ -2303,7 +2375,111 @@ function exportPDF() {
   const d = new Date();
   const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   document.getElementById('printDate').textContent = d.toLocaleDateString('en-US', opts);
+  document.getElementById('printMode').textContent = 'Round Robin';
+  document.body.classList.remove('print-ladder');
+  const orig = document.title;
+  document.title = `round-robin-results-${fileDate()}`;
   window.print();
+  document.title = orig;
+}
+
+function ladderExportPDF() {
+  const d = new Date();
+  const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  document.getElementById('printDate').textContent = d.toLocaleDateString('en-US', opts);
+  document.getElementById('printMode').textContent = 'Traditional Ladder';
+  document.body.classList.add('print-ladder');
+  const orig = document.title;
+  document.title = `ladder-results-${fileDate()}`;
+  window.print();
+  document.title = orig;
+  document.body.classList.remove('print-ladder');
+}
+
+// --- CSV Export ---
+let rrLeaderboardData = [];
+let ladderLeaderboardData = [];
+
+function fileDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function downloadCSV(filename, csv) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportCSV() {
+  let csv = '';
+
+  // Leaderboard
+  if (rrLeaderboardData.length) {
+    csv += 'LEADERBOARD\nRank,Player,W,L,Win %\n';
+    rrLeaderboardData.forEach((p, i) => {
+      const pct = p.total > 0 ? (p.pct * 100).toFixed(0) + '%' : '';
+      csv += `${i + 1},"${p.name}",${p.wins},${p.losses},${pct}\n`;
+    });
+  }
+
+  // Round history
+  if (scheduleData) {
+    csv += '\nROUND HISTORY\n';
+    for (const round of scheduleData) {
+      const rNames = roundNamesMap[round.round] || scheduleNames;
+      const rw = roundWinners[round.round];
+      csv += `\nRound ${round.round}\n`;
+      csv += 'Court,Team A,Team B,Winner\n';
+      round.courts.forEach((court, ci) => {
+        const tA = `${rNames[court.teamA[0]]} & ${rNames[court.teamA[1]]}`;
+        const tB = `${rNames[court.teamB[0]]} & ${rNames[court.teamB[1]]}`;
+        const winner = rw && rw[ci] ? (rw[ci] === 'A' ? tA : tB) : '';
+        csv += `${ci + 1},"${tA}","${tB}","${winner}"\n`;
+      });
+      if (round.sitOuts.length > 0) {
+        csv += `Bye:,"${round.sitOuts.map(i => rNames[i]).join(', ')}"\n`;
+      }
+    }
+  }
+
+  downloadCSV(`round-robin-results-${fileDate()}.csv`, csv);
+}
+
+function ladderExportCSV() {
+  let csv = '';
+
+  // Leaderboard
+  if (ladderLeaderboardData.length) {
+    csv += 'LEADERBOARD\nRank,Player,W,L,Win %,Streak,Current Court,Highest Court,Been Pickled\n';
+    ladderLeaderboardData.forEach((p, i) => {
+      const pct = p.total > 0 ? (p.pct * 100).toFixed(0) + '%' : '';
+      csv += `${i + 1},"${p.name}",${p.wins},${p.losses},${pct},${p.streak},${p.court},${p.highestCourt},${p.pickles}\n`;
+    });
+  }
+
+  // Round history
+  if (ladderState && ladderState.rounds.length > 0) {
+    csv += '\nROUND HISTORY\n';
+    const courtsHighToLow = [...LADDER_COURTS].reverse();
+    for (const round of ladderState.rounds) {
+      const rNames = round.names || ladderState.names;
+      csv += `\nRound ${round.round}\n`;
+      csv += 'Court,Team A,Score A,Team B,Score B,Winner\n';
+      for (const court of courtsHighToLow) {
+        const c = round.courts[court];
+        const tA = `${rNames[c.teamA[0]]} & ${rNames[c.teamA[1]]}`;
+        const tB = `${rNames[c.teamB[0]]} & ${rNames[c.teamB[1]]}`;
+        const winner = c.winner === 'A' ? tA : tB;
+        csv += `${court},"${tA}",${c.scoreA},"${tB}",${c.scoreB},"${winner}"\n`;
+      }
+    }
+  }
+
+  downloadCSV(`ladder-results-${fileDate()}.csv`, csv);
 }
 
 function renderStats(result, names) {
@@ -2503,10 +2679,6 @@ function ladderReset() {
 }
 
 // --- Core ladder algorithms ---
-function partnerKey(i, j) {
-  return Math.min(i, j) + '-' + Math.max(i, j);
-}
-
 function bestPairing(fourPlayers, genders, preferMixed, partnerHistory) {
   // partnerHistory = NxN matrix of partnership counts (0 = never partnered)
   // Priority: 1) minimize total repeat partnerships, 2) prefer mixed gender
@@ -2712,17 +2884,17 @@ function renderLadderCurrentRound() {
     html += `<div class="${cls}" id="lc${court}">
       <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem;">
         <div class="court-label" style="margin-bottom:0;">${label}</div>
-        <button class="btn-swap" id="swp${court}" onclick="ladderSwapPartners(${court})" style="display:none;">Swap Partners</button>
+        <button class="btn-swap" onclick="ladderSwapPartners(${court})">Mix Partners (if necessary)</button>
       </div>
       <div class="ladder-matchup">
         <div class="ladder-score-group">
           <span class="team team-a" id="lt${court}a">${esc(names[teams.teamA[0]])} &amp; ${esc(names[teams.teamA[1]])}</span>
-          <input type="number" class="ladder-score-input" id="ls${court}a" min="0" max="25" placeholder="0" inputmode="numeric" pattern="[0-9]*" onkeydown="return(event.key.length>1||/[0-9]/.test(event.key))">
+          <input type="number" class="ladder-score-input" id="ls${court}a" min="0" max="11" placeholder="0" inputmode="numeric" pattern="[0-9]*" onkeydown="return(event.key.length>1||/[0-9]/.test(event.key))">
         </div>
         <span class="vs">vs</span>
         <div class="ladder-score-group">
           <span class="team team-b" id="lt${court}b">${esc(names[teams.teamB[0]])} &amp; ${esc(names[teams.teamB[1]])}</span>
-          <input type="number" class="ladder-score-input" id="ls${court}b" min="0" max="25" placeholder="0" inputmode="numeric" pattern="[0-9]*" onkeydown="return(event.key.length>1||/[0-9]/.test(event.key))">
+          <input type="number" class="ladder-score-input" id="ls${court}b" min="0" max="11" placeholder="0" inputmode="numeric" pattern="[0-9]*" onkeydown="return(event.key.length>1||/[0-9]/.test(event.key))">
         </div>
       </div>
       <button class="btn-early" id="early${court}" onclick="ladderCompleteEarly(${court})" style="display:none;">Complete Game Early</button>
@@ -2744,64 +2916,48 @@ function renderLadderCurrentRound() {
     document.getElementById(`ls${court}b`).addEventListener('input', handler);
   }
 
-  // Highlight swap button if all possible pairings on a court have repeat partners
-  if (ladderState.partnerHistory) {
-    for (const court of LADDER_COURTS) {
-      const four = ladderState.courtPlayers[court];
-      const [A, B, C, D] = four;
-      const ph = ladderState.partnerHistory;
-      const allRepeats = (ph[A][B] > 0 && ph[C][D] > 0)
-                      && (ph[A][C] > 0 && ph[B][D] > 0)
-                      && (ph[A][D] > 0 && ph[B][C] > 0);
-      if (allRepeats) {
-        const btn = document.getElementById(`swp${court}`);
-        btn.style.display = '';
-        btn.classList.add('swap-hint');
-      }
-    }
-  }
 }
 
 function isValidPickleballResult(scoreA, scoreB) {
   if (isNaN(scoreA) || isNaN(scoreB)) return null;
-  const hi = Math.max(scoreA, scoreB);
-  if (hi < 11) return null; // no winner yet
   if (scoreA === scoreB) return null; // tied
-  return scoreA > scoreB ? 'A' : 'B';
-}
-
-function ladderSwapPartners(court) {
-  if (!ladderState) return;
-  const four = ladderState.courtPlayers[court];
-  const cur = ladderState.courtTeams[court];
-  const [A, B, C, D] = four;
-  const pairings = [
-    { teamA: [A, B], teamB: [C, D] },
-    { teamA: [A, C], teamB: [B, D] },
-    { teamA: [A, D], teamB: [B, C] },
-  ];
-  // Find current pairing index and cycle to next
-  const curKey = partnerKey(cur.teamA[0], cur.teamA[1]);
-  let idx = pairings.findIndex(p => partnerKey(p.teamA[0], p.teamA[1]) === curKey);
-  idx = (idx + 1) % 3;
-  ladderState.courtTeams[court] = pairings[idx];
-
-  // Update the team name displays without full re-render (preserve scores)
-  const { names } = ladderState;
-  const t = pairings[idx];
-  document.getElementById(`lt${court}a`).innerHTML = `${esc(names[t.teamA[0]])} &amp; ${esc(names[t.teamA[1]])}`;
-  document.getElementById(`lt${court}b`).innerHTML = `${esc(names[t.teamB[0]])} &amp; ${esc(names[t.teamB[1]])}`;
-
-  // Re-check score state for this court
-  checkLadderCourtScore(court);
-  saveLadderState();
+  // Play to 11, win by 1: winner must have exactly 11, loser 0-10
+  if (scoreA === 11 && scoreB >= 0 && scoreB <= 10) return 'A';
+  if (scoreB === 11 && scoreA >= 0 && scoreA <= 10) return 'B';
+  return null;
 }
 
 function scoreError(sa, sb) {
   if (isNaN(sa) || isNaN(sb)) return null;
   if (sa < 0 || sb < 0) return 'Scores cannot be negative';
   if (sa === sb) return 'Scores cannot be tied';
+  if (sa > 11 || sb > 11) return 'Max score is 11';
+  const hi = Math.max(sa, sb);
+  if (hi === 11) return null; // valid result
+  if (hi > 0 && hi < 11 && sa !== sb) return null; // game in progress, no error yet
   return null;
+}
+
+function ladderSwapPartners(court) {
+  if (!ladderState) return;
+  const [A, B, C, D] = ladderState.courtPlayers[court];
+  const pairings = [
+    { teamA: [A, B], teamB: [C, D] },
+    { teamA: [A, C], teamB: [B, D] },
+    { teamA: [A, D], teamB: [B, C] },
+  ];
+  const cur = ladderState.courtTeams[court];
+  const curKey = Math.min(cur.teamA[0], cur.teamA[1]) + '-' + Math.max(cur.teamA[0], cur.teamA[1]);
+  let idx = pairings.findIndex(p => Math.min(p.teamA[0], p.teamA[1]) + '-' + Math.max(p.teamA[0], p.teamA[1]) === curKey);
+  idx = (idx + 1) % 3;
+  ladderState.courtTeams[court] = pairings[idx];
+
+  const { names } = ladderState;
+  const t = pairings[idx];
+  document.getElementById(`lt${court}a`).innerHTML = `${esc(names[t.teamA[0]])} &amp; ${esc(names[t.teamA[1]])}`;
+  document.getElementById(`lt${court}b`).innerHTML = `${esc(names[t.teamB[0]])} &amp; ${esc(names[t.teamB[1]])}`;
+  checkLadderCourtScore(court);
+  saveLadderState();
 }
 
 function checkLadderCourtScore(court) {
@@ -2904,7 +3060,7 @@ function ladderCompleteRound() {
   }
 
   if (!valid) {
-    alert('Please enter valid scores for all courts (play to 11, win by 2 — or use "Complete Game Early").');
+    alert('Please enter valid scores for all courts (play to 11, win by 1 — or use "Complete Game Early").');
     return;
   }
 
@@ -2945,7 +3101,13 @@ function renderLadderLeaderboard() {
   if (!ladderState) { section.innerHTML = ''; return; }
 
   // Build stats from round history using per-round names (supports substitutions)
-  const identityStats = {}; // "slotIdx:name" -> {name, wins, losses}
+  const identityStats = {}; // "slotIdx:name" -> stats object
+  const init = (key, name) => {
+    if (!identityStats[key]) identityStats[key] = {
+      name, slot: parseInt(key), wins: 0, losses: 0, pickles: 0,
+      highestCourt: 0, results: [], // results: ordered list of 'W'/'L' for streak calc
+    };
+  };
 
   for (const round of ladderState.rounds) {
     const rNames = round.names || ladderState.names;
@@ -2953,24 +3115,54 @@ function renderLadderLeaderboard() {
       const c = round.courts[court];
       const winTeam = c.winner === 'A' ? c.teamA : c.teamB;
       const loseTeam = c.winner === 'A' ? c.teamB : c.teamA;
+      const loseScore = c.winner === 'A' ? c.scoreB : c.scoreA;
       winTeam.forEach(p => {
         const key = p + ':' + rNames[p];
-        if (!identityStats[key]) identityStats[key] = { name: rNames[p], wins: 0, losses: 0 };
-        identityStats[key].wins++;
+        init(key, rNames[p]);
+        const s = identityStats[key];
+        s.wins++;
+        if (court > s.highestCourt) s.highestCourt = court;
+        s.results.push('W');
       });
       loseTeam.forEach(p => {
         const key = p + ':' + rNames[p];
-        if (!identityStats[key]) identityStats[key] = { name: rNames[p], wins: 0, losses: 0 };
-        identityStats[key].losses++;
+        init(key, rNames[p]);
+        const s = identityStats[key];
+        s.losses++;
+        if (loseScore === 0) s.pickles++;
+        if (court > s.highestCourt) s.highestCourt = court;
+        s.results.push('L');
       });
     }
   }
 
-  const players = Object.values(identityStats).map(s => ({
-    name: s.name, wins: s.wins, losses: s.losses,
-    total: s.wins + s.losses,
-    pct: (s.wins + s.losses) > 0 ? s.wins / (s.wins + s.losses) : 0,
-  }));
+  // Determine current court from live state
+  const currentCourt = {};
+  for (const court of LADDER_COURTS) {
+    if (ladderState.courtPlayers[court]) {
+      ladderState.courtPlayers[court].forEach(p => { currentCourt[p] = court; });
+    }
+  }
+
+  const players = Object.values(identityStats).map(s => {
+    // Compute streak from end of results array
+    let streak = '';
+    if (s.results.length > 0) {
+      const last = s.results[s.results.length - 1];
+      let count = 0;
+      for (let i = s.results.length - 1; i >= 0 && s.results[i] === last; i--) count++;
+      streak = last + count;
+    }
+    return {
+      name: s.name, wins: s.wins, losses: s.losses,
+      total: s.wins + s.losses,
+      pct: (s.wins + s.losses) > 0 ? s.wins / (s.wins + s.losses) : 0,
+      court: currentCourt[s.slot] || '\u2014',
+      streak,
+      highestCourt: s.highestCourt,
+      pickles: s.pickles,
+    };
+  });
   players.sort((a, b) => b.pct - a.pct || b.wins - a.wins || a.losses - b.losses);
 
   const totalGames = players.reduce((a, p) => a + p.wins, 0);
@@ -2982,10 +3174,12 @@ function renderLadderLeaderboard() {
     return;
   }
 
+  ladderLeaderboardData = players;
+
   const medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
-  let html = '<div class="leaderboard"><h2>Leaderboard</h2>';
+  let html = '<div class="leaderboard"><div class="schedule-header"><h2>Leaderboard</h2><button class="btn-export-pdf" onclick="ladderExportPDF()">Export PDF</button><button class="btn-export-csv" onclick="ladderExportCSV()">Export CSV</button></div>';
   html += '<table class="leaderboard-table"><thead><tr>';
-  html += '<th>Player</th><th>W</th><th>L</th><th>Win %</th><th class="lb-bar-cell"></th>';
+  html += '<th>Player</th><th>W</th><th>L</th><th>Win %</th><th>Streak</th><th>Current Court</th><th>Highest Court</th><th>Been Pickled</th><th class="lb-bar-cell"></th>';
   html += '</tr></thead><tbody>';
 
   players.forEach((p, idx) => {
@@ -2993,11 +3187,16 @@ function renderLadderLeaderboard() {
     const wPct = p.total > 0 ? (p.wins / p.total * 100).toFixed(1) : 0;
     const lPct = p.total > 0 ? (p.losses / p.total * 100).toFixed(1) : 0;
     const medal = idx < 3 && p.total > 0 ? `<span class="lb-medal">${medals[idx]}</span>` : '';
+    const streakClass = p.streak.startsWith('W') ? 'lb-streak-w' : p.streak.startsWith('L') ? 'lb-streak-l' : '';
     html += `<tr>
       <td>${medal}<span class="lb-rank">${idx + 1}.</span><span class="lb-name">${esc(p.name)}</span></td>
       <td class="lb-wins">${p.wins}</td>
       <td class="lb-losses">${p.losses}</td>
       <td class="lb-pct">${p.total > 0 ? pct + '%' : '<span class="lb-empty">\u2014</span>'}</td>
+      <td class="${streakClass}">${p.streak || '\u2014'}</td>
+      <td class="lb-court">${p.court}</td>
+      <td class="lb-best">${p.highestCourt || '\u2014'}</td>
+      <td class="lb-pickles">${p.pickles > 0 ? p.pickles : '<span class="lb-empty">\u2014</span>'}</td>
       <td class="lb-bar-cell"><div class="lb-bar">
         <div class="lb-bar-w" style="width:${wPct}%"></div>
         <div class="lb-bar-l" style="width:${lPct}%"></div>
