@@ -1949,6 +1949,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
   const sitOutCount = new Array(n).fill(0);
   const partnerCount = Array.from({length: n}, () => new Array(n).fill(0));
   const opponentCount = Array.from({length: n}, () => new Array(n).fill(0));
+  const courtCount = Array.from({length: n}, () => new Array(n).fill(0));
   const playCount = new Array(n).fill(0);
   const schedule = [];
 
@@ -1977,27 +1978,26 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
         const b = c * 4;
         const a1 = perm[b], a2 = perm[b + 1], b1 = perm[b + 2], b2 = perm[b + 3];
 
-        score -= partnerCount[a1][a2] * 50;
-        score -= partnerCount[b1][b2] * 50;
-
-        score -= opponentCount[a1][b1] * 6;
-        score -= opponentCount[a1][b2] * 6;
-        score -= opponentCount[a2][b1] * 6;
-        score -= opponentCount[a2][b2] * 6;
-
-        const courtPlayers = [a1, a2, b1, b2];
-        for (let x = 0; x < 4; x++) {
-          for (let y = x + 1; y < 4; y++) {
-            score -= (partnerCount[courtPlayers[x]][courtPlayers[y]] +
-                      opponentCount[courtPlayers[x]][courtPlayers[y]]) * 2;
-          }
-        }
+        score -= partnerCount[a1][a2] * 100;
+        score -= partnerCount[b1][b2] * 100;
 
         if (preferMixed) {
           const teamAMixed = genders[a1] !== genders[a2];
           const teamBMixed = genders[b1] !== genders[b2];
-          if (teamAMixed) score += 20;
-          if (teamBMixed) score += 20;
+          if (teamAMixed) score += 25;
+          if (teamBMixed) score += 25;
+        }
+
+        score -= opponentCount[a1][b1] * 8;
+        score -= opponentCount[a1][b2] * 8;
+        score -= opponentCount[a2][b1] * 8;
+        score -= opponentCount[a2][b2] * 8;
+
+        const courtPlayers = [a1, a2, b1, b2];
+        for (let x = 0; x < 4; x++) {
+          for (let y = x + 1; y < 4; y++) {
+            score -= courtCount[courtPlayers[x]][courtPlayers[y]] * 3;
+          }
         }
       }
 
@@ -2022,7 +2022,15 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
       opponentCount[a2][b1]++; opponentCount[b1][a2]++;
       opponentCount[a2][b2]++; opponentCount[b2][a2]++;
 
-      [a1, a2, b1, b2].forEach(i => playCount[i]++);
+      const cp = [a1, a2, b1, b2];
+      for (let x = 0; x < 4; x++) {
+        for (let y = x + 1; y < 4; y++) {
+          courtCount[cp[x]][cp[y]]++;
+          courtCount[cp[y]][cp[x]]++;
+        }
+      }
+
+      cp.forEach(i => playCount[i]++);
 
       courts.push({ teamA: [a1, a2], teamB: [b1, b2] });
     }
@@ -2034,7 +2042,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
     });
   }
 
-  return { schedule, partnerCount, opponentCount, sitOutCount, playCount };
+  return { schedule, partnerCount, opponentCount, courtCount, sitOutCount, playCount };
 }
 
 // --- Validation & Rendering ---
@@ -2484,13 +2492,13 @@ function ladderExportCSV() {
 
 function renderStats(result, names) {
   const section = document.getElementById('statsSection');
-  const { partnerCount, opponentCount, sitOutCount, playCount } = result;
+  const { partnerCount, opponentCount, courtCount, sitOutCount, playCount } = result;
   const n = names.length;
 
-  // Compute diversity metrics
   let totalPartnerPairs = 0, uniquePartnerPairs = 0;
   let totalOpponentPairs = 0, uniqueOpponentPairs = 0;
-  let maxPartner = 0, maxOpponent = 0;
+  let uniqueCourtPairs = 0;
+  let maxPartner = 0, maxOpponent = 0, maxCourt = 0;
 
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
@@ -2498,12 +2506,15 @@ function renderStats(result, names) {
       if (partnerCount[i][j] > maxPartner) maxPartner = partnerCount[i][j];
       if (opponentCount[i][j] > 0) { uniqueOpponentPairs++; totalOpponentPairs += opponentCount[i][j]; }
       if (opponentCount[i][j] > maxOpponent) maxOpponent = opponentCount[i][j];
+      if (courtCount && courtCount[i][j] > 0) uniqueCourtPairs++;
+      if (courtCount && courtCount[i][j] > maxCourt) maxCourt = courtCount[i][j];
     }
   }
 
-  const possiblePairs = n * (n - 1) / 2; // 105
+  const possiblePairs = n * (n - 1) / 2;
   const partnerDiversity = (uniquePartnerPairs / possiblePairs * 100).toFixed(1);
   const opponentDiversity = (uniqueOpponentPairs / possiblePairs * 100).toFixed(1);
+  const courtDiversity = courtCount ? (uniqueCourtPairs / possiblePairs * 100).toFixed(1) : null;
 
   let html = `<div class="stats-toggle collapsed" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')">
     <h2>Statistics</h2><span class="stats-chevron">&#9660;</span>
@@ -2518,10 +2529,15 @@ function renderStats(result, names) {
     <div class="stat-row" style="margin-top:0.5rem"><span class="stat-name">Unique opponent pairs</span>
       <span class="stat-value">${uniqueOpponentPairs} / ${possiblePairs} (${opponentDiversity}%)</span></div>
     <div class="diversity-bar"><div class="diversity-fill" style="width:${opponentDiversity}%;background:linear-gradient(90deg,#8b5cf6,#a78bfa)"></div></div>
+    ${courtDiversity !== null ? `<div class="stat-row" style="margin-top:0.5rem"><span class="stat-name">Unique court pairings</span>
+      <span class="stat-value">${uniqueCourtPairs} / ${possiblePairs} (${courtDiversity}%)</span></div>
+    <div class="diversity-bar"><div class="diversity-fill" style="width:${courtDiversity}%;background:linear-gradient(90deg,#10b981,#34d399)"></div></div>` : ''}
     <div class="stat-row" style="margin-top:0.5rem"><span class="stat-name">Max times as partners</span>
       <span class="stat-value">${maxPartner}</span></div>
     <div class="stat-row"><span class="stat-name">Max times as opponents</span>
       <span class="stat-value">${maxOpponent}</span></div>
+    ${courtDiversity !== null ? `<div class="stat-row"><span class="stat-name">Max times on same court</span>
+      <span class="stat-value">${maxCourt}</span></div>` : ''}
   </div>`;
 
   // Per-player card
@@ -2539,10 +2555,9 @@ function renderStats(result, names) {
   }
   html += '</div></div>';
 
-  // Partner matrix
   html += renderMatrix('Partner Count Matrix', partnerCount, names, n, maxPartner);
-  // Opponent matrix
   html += renderMatrix('Opponent Count Matrix', opponentCount, names, n, maxOpponent);
+  if (courtCount) html += renderMatrix('Court Co-occurrence Matrix', courtCount, names, n, maxCourt);
 
   html += '</div>'; // close stats-body
   section.innerHTML = html;
