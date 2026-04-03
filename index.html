@@ -1952,6 +1952,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
   const courtCount = Array.from({length: n}, () => new Array(n).fill(0));
   const playCount = new Array(n).fill(0);
   const schedule = [];
+  let prevRoundCourt = Array.from({length: n}, () => new Array(n).fill(0));
 
   for (let r = 0; r < numRounds; r++) {
     // Select sit-outs: those who have sat out least (to balance)
@@ -1966,19 +1967,31 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
 
     sitOuts.forEach(i => sitOutCount[i]++);
 
-    // Two-tier optimization via random sampling:
+    // Three-tier optimization via random sampling:
+    //   Tier 0 (hard): no previous-round courtmates reunited; courts must be
+    //                   4-same-gender or 2M+2F with mixed teams (never 3+1 or MM-vs-FF)
     //   Tier 1 (absolute): minimize partner repeats
     //   Tier 2 (weighted): mixed gender + opponent diversity + court diversity
-    let bestT1 = Infinity, bestT2 = -Infinity;
+    let bestT0 = Infinity, bestT1 = Infinity, bestT2 = -Infinity;
     let bestPerm = null;
 
     for (let iter = 0; iter < iterations; iter++) {
       const perm = shuffle(playing);
-      let t1 = 0, t2 = 0;
+      let t0 = 0, t1 = 0, t2 = 0;
 
       for (let c = 0; c < numCourts; c++) {
         const b = c * 4;
         const a1 = perm[b], a2 = perm[b + 1], b1 = perm[b + 2], b2 = perm[b + 3];
+
+        const cp = [a1, a2, b1, b2];
+        for (let x = 0; x < 4; x++) {
+          for (let y = x + 1; y < 4; y++) {
+            t0 += prevRoundCourt[cp[x]][cp[y]];
+          }
+        }
+        const maleCount = cp.filter(p => genders[p] === 'M').length;
+        if (maleCount === 1 || maleCount === 3) t0++;
+        else if (maleCount === 2 && genders[a1] === genders[a2]) t0++;
 
         t1 += partnerCount[a1][a2] + partnerCount[b1][b2];
 
@@ -1990,16 +2003,15 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
         t2 -= (opponentCount[a1][b1] + opponentCount[a1][b2] +
                opponentCount[a2][b1] + opponentCount[a2][b2]) * 5;
 
-        const courtPlayers = [a1, a2, b1, b2];
         for (let x = 0; x < 4; x++) {
           for (let y = x + 1; y < 4; y++) {
-            t2 -= courtCount[courtPlayers[x]][courtPlayers[y]] * 2;
+            t2 -= courtCount[cp[x]][cp[y]] * 2;
           }
         }
       }
 
-      if (t1 < bestT1 || (t1 === bestT1 && t2 > bestT2)) {
-        bestT1 = t1; bestT2 = t2;
+      if (t0 < bestT0 || (t0 === bestT0 && (t1 < bestT1 || (t1 === bestT1 && t2 > bestT2)))) {
+        bestT0 = t0; bestT1 = t1; bestT2 = t2;
         bestPerm = perm;
       }
     }
@@ -2037,6 +2049,17 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
       courts,
       sitOuts: [...sitOuts]
     });
+
+    prevRoundCourt = Array.from({length: n}, () => new Array(n).fill(0));
+    for (let c = 0; c < numCourts; c++) {
+      const cp = [courts[c].teamA[0], courts[c].teamA[1], courts[c].teamB[0], courts[c].teamB[1]];
+      for (let x = 0; x < 4; x++) {
+        for (let y = x + 1; y < 4; y++) {
+          prevRoundCourt[cp[x]][cp[y]] = 1;
+          prevRoundCourt[cp[y]][cp[x]] = 1;
+        }
+      }
+    }
   }
 
   return { schedule, partnerCount, opponentCount, courtCount, sitOutCount, playCount };
