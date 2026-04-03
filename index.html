@@ -1963,7 +1963,28 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
       return randKeys[a] - randKeys[b];
     });
     const sitOuts = numSitOuts > 0 ? new Set(indices.slice(0, numSitOuts)) : new Set();
-    const playing = indices.filter(i => !sitOuts.has(i));
+    let playing = indices.filter(i => !sitOuts.has(i));
+
+    // Ensure even male/female count among playing players so every court
+    // can be 4-same-gender or 2M+2F — avoids forced 3+1 splits
+    if (sitOuts.size > 0) {
+      const playingMales = playing.filter(i => genders[i] === 'M').length;
+      if (playingMales % 2 !== 0) {
+        let bestSwap = null, bestCost = Infinity;
+        for (const p of playing) {
+          for (const s of sitOuts) {
+            if (genders[p] === genders[s]) continue;
+            const cost = Math.abs(sitOutCount[p] - sitOutCount[s]);
+            if (cost < bestCost) { bestCost = cost; bestSwap = { out: p, in: s }; }
+          }
+        }
+        if (bestSwap) {
+          sitOuts.delete(bestSwap.in);
+          sitOuts.add(bestSwap.out);
+          playing = indices.filter(i => !sitOuts.has(i));
+        }
+      }
+    }
 
     sitOuts.forEach(i => sitOutCount[i]++);
 
@@ -1990,8 +2011,9 @@ function generateSchedule(numPlayers, numCourts, numRounds, iterations, genders,
           }
         }
         const maleCount = cp.filter(p => genders[p] === 'M').length;
-        if (maleCount === 1 || maleCount === 3) t0++;
-        else if (maleCount === 2 && genders[a1] === genders[a2]) t0++;
+        if (maleCount === 1 || maleCount === 3) t0 += 100;
+        else if (maleCount === 2 && genders[a1] === genders[a2]) t0 += 100;
+        else if (maleCount === 0 || maleCount === 4) t0 += 2;
 
         t1 += partnerCount[a1][a2] + partnerCount[b1][b2];
 
