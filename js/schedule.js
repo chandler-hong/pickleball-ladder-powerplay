@@ -41,10 +41,15 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
 
     const indices = Array.from({length: n}, (_, i) => i);
     const randKeys = indices.map(() => Math.random());
+    // Hard cooldown: never sit out within 2 rounds. Beyond that, randomize.
+    const hardCooldown = 3;
     const sitOutPriority = (a, b) => {
-      // Prefer players whose last bye was longest ago (or never)
-      // This prevents consecutive byes and enforces cooldown naturally
-      if (roundsSinceLastBye[a] !== roundsSinceLastBye[b]) return roundsSinceLastBye[b] - roundsSinceLastBye[a];
+      const aRecent = roundsSinceLastBye[a] <= hardCooldown ? 1 : 0;
+      const bRecent = roundsSinceLastBye[b] <= hardCooldown ? 1 : 0;
+      if (aRecent !== bRecent) return aRecent - bRecent;
+      if (aRecent && bRecent) {
+        if (roundsSinceLastBye[a] !== roundsSinceLastBye[b]) return roundsSinceLastBye[b] - roundsSinceLastBye[a];
+      }
       if (sitOutCount[a] !== sitOutCount[b]) return sitOutCount[a] - sitOutCount[b];
       return randKeys[a] - randKeys[b];
     };
@@ -58,7 +63,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
     if (numSitOuts > 0) {
       const globalMinSitOut = Math.min(...sitOutCount);
       const idealCumMaleByes = (r + 1) * idealSitMPerRound;
-      let bestSitM = 0, bestUnfair = Infinity, bestMinGap = -1;
+      let bestSitM = 0, bestUnfair = Infinity, bestCooldown = Infinity;
       let bestGenderDev = Infinity, bestFairness = Infinity;
 
       for (let sitM = Math.max(0, numSitOuts - totalF); sitM <= Math.min(numSitOuts, totalM); sitM++) {
@@ -67,27 +72,26 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
         const playF = totalF - sitF;
         if (playM % 2 !== 0 || playF % 2 !== 0) continue;
 
-        let minGap = Infinity, unfair = 0, fairness = 0;
+        let cooldownViolations = 0, unfair = 0, fairness = 0;
         for (let i = 0; i < sitM; i++) {
-          minGap = Math.min(minGap, roundsSinceLastBye[malesByPriority[i]]);
+          if (roundsSinceLastBye[malesByPriority[i]] <= hardCooldown) cooldownViolations++;
           if (sitOutCount[malesByPriority[i]] > globalMinSitOut) unfair++;
           fairness += sitOutCount[malesByPriority[i]];
         }
         for (let i = 0; i < sitF; i++) {
-          minGap = Math.min(minGap, roundsSinceLastBye[femalesByPriority[i]]);
+          if (roundsSinceLastBye[femalesByPriority[i]] <= hardCooldown) cooldownViolations++;
           if (sitOutCount[femalesByPriority[i]] > globalMinSitOut) unfair++;
           fairness += sitOutCount[femalesByPriority[i]];
         }
-        if (minGap === Infinity) minGap = 999;
 
         const genderDev = Math.abs((cumMaleByes + sitM) - idealCumMaleByes);
 
         if (unfair < bestUnfair ||
-            (unfair === bestUnfair && minGap > bestMinGap) ||
-            (unfair === bestUnfair && minGap === bestMinGap && genderDev < bestGenderDev) ||
-            (unfair === bestUnfair && minGap === bestMinGap && genderDev === bestGenderDev && fairness < bestFairness)) {
+            (unfair === bestUnfair && cooldownViolations < bestCooldown) ||
+            (unfair === bestUnfair && cooldownViolations === bestCooldown && genderDev < bestGenderDev) ||
+            (unfair === bestUnfair && cooldownViolations === bestCooldown && genderDev === bestGenderDev && fairness < bestFairness)) {
           bestUnfair = unfair;
-          bestMinGap = minGap;
+          bestCooldown = cooldownViolations;
           bestGenderDev = genderDev;
           bestFairness = fairness;
           bestSitM = sitM;
