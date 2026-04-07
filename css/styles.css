@@ -824,4 +824,14 @@
       margin-right: 0.1cm !important;
     }
     .vs { color: #9ca3af !important; font-size: 6.5pt !important; }
+    .version-indicator { display: none !important; }
+  }
+
+  .version-indicator {
+    text-align: center;
+    padding: 1rem 0 0.5rem;
+    font-size: 0.7rem;
+    color: #64748b;
+    opacity: 0.6;
+    letter-spacing: 0.03em;
   }

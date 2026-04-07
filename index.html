@@ -3,11 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>PowerPlay Pickleball Ladder Tool</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css">
+<script>const APP_VERSION = "1.1.0";</script>
+<link rel="stylesheet" href="css/styles.css?v=1.1.0">
 </head>
 <body>
 <div class="container">
@@ -110,13 +114,17 @@
     <div id="ladderHistorySection"></div>
     <div id="ladderLeaderboardSection"></div>
   </div>
+  <div class="version-indicator" id="versionIndicator"></div>
 </div>
 
-<script src="js/utils.js"></script>
-<script src="js/schedule.js"></script>
-<script src="js/state.js"></script>
-<script src="js/schedule-ui.js"></script>
-<script src="js/ladder.js"></script>
-<script>restoreState(); restoreLadderState();</script>
+<script src="js/utils.js?v=1.1.0"></script>
+<script src="js/schedule.js?v=1.1.0"></script>
+<script src="js/state.js?v=1.1.0"></script>
+<script src="js/schedule-ui.js?v=1.1.0"></script>
+<script src="js/ladder.js?v=1.1.0"></script>
+<script>
+restoreState(); restoreLadderState();
+document.getElementById('versionIndicator').textContent = 'v' + APP_VERSION;
+</script>
 </body>
 </html>
