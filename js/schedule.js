@@ -70,7 +70,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
         const sitF = numSitOuts - sitM;
         const playM = totalM - sitM;
         const playF = totalF - sitF;
-        if (playM % 2 !== 0 || playF % 2 !== 0) continue;
+        if ((playM + playF) % 2 !== 0) continue;
 
         let cooldownViolations = 0, unfair = 0, fairness = 0;
         for (let i = 0; i < sitM; i++) {

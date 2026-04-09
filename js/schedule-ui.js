@@ -39,9 +39,27 @@ function buildPlayerGrid(count, skipSave) {
     document.getElementById(`p${i}`).addEventListener('input', function() {
       this.classList.remove('input-error');
       const g = guessGender(this.value);
-      if (g) document.getElementById(`g${this.id.slice(1)}${g.toLowerCase()}`).checked = true;
-      // Live-update schedule if one exists (substitution: only current + future rounds)
       const idx = parseInt(this.id.slice(1));
+      const toggle = this.parentElement.querySelector('.gender-toggle');
+      if (g) {
+        document.getElementById(`g${idx}${g.toLowerCase()}`).checked = true;
+        toggle.classList.remove('gender-undetected');
+        const hint = this.parentElement.querySelector('.gender-hint');
+        if (hint) hint.remove();
+      } else if (this.value.trim()) {
+        toggle.classList.add('gender-undetected');
+        if (!this.parentElement.querySelector('.gender-hint')) {
+          const hint = document.createElement('div');
+          hint.className = 'gender-hint';
+          hint.textContent = 'Gender not auto-detected — please verify M/F toggle';
+          this.parentElement.appendChild(hint);
+        }
+      } else {
+        toggle.classList.remove('gender-undetected');
+        const hint = this.parentElement.querySelector('.gender-hint');
+        if (hint) hint.remove();
+      }
+      // Live-update schedule if one exists (substitution: only current + future rounds)
       if (scheduleNames && idx < scheduleNames.length) {
         const newName = this.value || `Player ${idx + 1}`;
         // Warn if duplicate name exists (check all round names + current player inputs)
@@ -80,9 +98,18 @@ function buildPlayerGrid(count, skipSave) {
       }
       saveState();
     });
-    // Save on gender toggle change
-    document.getElementById(`g${i}m`).addEventListener('change', saveState);
-    document.getElementById(`g${i}f`).addEventListener('change', saveState);
+    // Save on gender toggle change; dismiss undetected hint on manual toggle
+    const dismissHint = function() {
+      const pi = this.name.slice(1); // "g3" → "3"
+      const row = document.getElementById(`p${pi}`).parentElement;
+      const toggle = row.querySelector('.gender-toggle');
+      toggle.classList.remove('gender-undetected');
+      const hint = row.querySelector('.gender-hint');
+      if (hint) hint.remove();
+      saveState();
+    };
+    document.getElementById(`g${i}m`).addEventListener('change', dismissHint);
+    document.getElementById(`g${i}f`).addEventListener('change', dismissHint);
   }
   currentPlayerCount = count;
 }
