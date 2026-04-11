@@ -326,7 +326,7 @@ function generate() {
 
   requestAnimationFrame(() => {
     setTimeout(() => {
-      const scheduleResult = generateSchedule(numPlayers, numCourts, rounds, null, genders, preferMixed);
+      const scheduleResult = generateBestSchedule(numPlayers, numCourts, rounds, genders, preferMixed);
       lastFullResult = scheduleResult;
       scheduleCourtNames = courtNames;
       renderSchedule(scheduleResult, names, courtNames);
@@ -656,10 +656,10 @@ function renderStats(result, names) {
     <h3>Diversity Scores</h3>
     <div class="stat-row"><span class="stat-name">Unique partner pairs</span>
       <span class="stat-value">${uniquePartnerPairs} / ${possiblePairs} (${partnerDiversity}%)</span></div>
-    <div class="diversity-bar"><div class="diversity-fill" style="width:${partnerDiversity}%;background:linear-gradient(90deg,#3b82f6,#60a5fa)"></div></div>
+    <div class="diversity-bar"><div class="diversity-fill" style="width:${partnerDiversity}%;background:linear-gradient(90deg,#818cf8,#a5b4fc)"></div></div>
     <div class="stat-row" style="margin-top:0.5rem"><span class="stat-name">Unique opponent pairs</span>
       <span class="stat-value">${uniqueOpponentPairs} / ${possiblePairs} (${opponentDiversity}%)</span></div>
-    <div class="diversity-bar"><div class="diversity-fill" style="width:${opponentDiversity}%;background:linear-gradient(90deg,#8b5cf6,#a78bfa)"></div></div>
+    <div class="diversity-bar"><div class="diversity-fill" style="width:${opponentDiversity}%;background:linear-gradient(90deg,#c4b5fd,#ddd6fe)"></div></div>
     ${courtDiversity !== null ? `<div class="stat-row" style="margin-top:0.5rem"><span class="stat-name">Unique court pairings</span>
       <span class="stat-value">${uniqueCourtPairs} / ${possiblePairs} (${courtDiversity}%)</span></div>
     <div class="diversity-bar"><div class="diversity-fill" style="width:${courtDiversity}%;background:linear-gradient(90deg,#10b981,#34d399)"></div></div>` : ''}
@@ -719,5 +719,5 @@ function renderMatrix(title, matrix, names, n, maxVal) {
 }
 
 // Initial build (default — may be overridden by restoreState at end of script)
-buildPlayerGrid(15);
-buildCourtInputs(3);
+buildPlayerGrid(20);
+buildCourtInputs(4);

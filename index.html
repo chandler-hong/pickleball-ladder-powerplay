@@ -10,13 +10,13 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script>const APP_VERSION = "1.1.1";</script>
-<link rel="stylesheet" href="css/styles.css?v=1.1.1">
+<script>const APP_VERSION = "2.0.0";</script>
+<link rel="stylesheet" href="css/styles.css?v=2.0.0">
 </head>
 <body>
 <div class="container">
   <div class="header">
-    <h1>PowerPlay Pickleball Ladder Tool</h1>
+    <h1><span class="title-emoji">🥒</span> PowerPlay Pickleball Ladder Tool</h1>
     <p>Tool created by Chandler Hong and Claude Code Opus 4.6 :)</p>
   </div>
 
@@ -31,7 +31,7 @@
   </div>
 
   <div class="print-title">
-    <h1>PowerPlay Pickleball Ladder Tool</h1>
+    <h1><span class="title-emoji">🥒</span> PowerPlay Pickleball Ladder Tool</h1>
     <p><span id="printMode"></span> &mdash; <span id="printDate"></span></p>
     <p style="font-size:7pt; color:#999;">Tool created by Chandler Hong and Claude Code Opus 4.6 :)</p>
   </div>
@@ -42,15 +42,15 @@
     <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.25rem;">
       <div style="display:flex; align-items:center; gap:0.6rem;">
         <label class="option-label" for="numPlayers">Number of Players</label>
-        <input type="number" class="rounds-input" id="numPlayers" value="15" min="4" max="40">
+        <input type="number" class="rounds-input" id="numPlayers" value="20" min="4" max="40">
       </div>
       <div style="display:flex; align-items:center; gap:0.6rem;">
         <label class="option-label" for="numCourts">Number of Courts</label>
-        <input type="number" class="rounds-input" id="numCourts" value="3" min="1" max="10">
+        <input type="number" class="rounds-input" id="numCourts" value="4" min="1" max="10">
       </div>
       <div style="display:flex; align-items:center; gap:0.6rem;">
         <label class="option-label" for="numRounds">Number of Rounds</label>
-        <input type="number" class="rounds-input" id="numRounds" value="15" min="1" max="30">
+        <input type="number" class="rounds-input" id="numRounds" value="10" min="1" max="30">
       </div>
     </div>
     <div class="option-row" style="margin-top:0;">
@@ -76,7 +76,7 @@
     <div class="controls" style="margin-top:0;">
       <div class="spacer"></div>
       <button class="btn btn-danger" onclick="newTournament()">Reset Tool</button>
-      <button class="btn" style="background:#8b5cf6; color:#fff; border:none;" onclick="fillDefaults()">Fill Random Names</button>
+      <button class="btn" style="background:rgba(253,224,71,0.1); color:#fde68a; border:1px solid rgba(253,224,71,0.18);" onclick="fillDefaults()">Fill Random Names</button>
       <button class="btn btn-primary" onclick="generate()">Generate Schedule</button>
     </div>
   </div>
@@ -102,7 +102,7 @@
       <div class="controls" style="margin-top:0;">
         <div class="spacer"></div>
         <button class="btn btn-danger" onclick="ladderReset()">Reset Ladder</button>
-        <button class="btn" style="background:#8b5cf6; color:#fff; border:none;" onclick="ladderFillDefaults()">Fill Random Names</button>
+        <button class="btn" style="background:rgba(253,224,71,0.1); color:#fde68a; border:1px solid rgba(253,224,71,0.18);" onclick="ladderFillDefaults()">Fill Random Names</button>
         <button class="btn btn-primary" onclick="ladderStart()">Start Ladder</button>
       </div>
     </div>
@@ -117,11 +117,11 @@
   <div class="version-indicator" id="versionIndicator"></div>
 </div>
 
-<script src="js/utils.js?v=1.1.1"></script>
-<script src="js/schedule.js?v=1.1.1"></script>
-<script src="js/state.js?v=1.1.1"></script>
-<script src="js/schedule-ui.js?v=1.1.1"></script>
-<script src="js/ladder.js?v=1.1.1"></script>
+<script src="js/utils.js?v=2.0.0"></script>
+<script src="js/schedule.js?v=2.0.0"></script>
+<script src="js/state.js?v=2.0.0"></script>
+<script src="js/schedule-ui.js?v=2.0.0"></script>
+<script src="js/ladder.js?v=2.0.0"></script>
 <script>
 restoreState(); restoreLadderState();
 document.getElementById('versionIndicator').textContent = 'v' + APP_VERSION;

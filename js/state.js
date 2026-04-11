@@ -30,16 +30,16 @@ function restoreState() {
   if (!state) return false;
 
   // Restore setup values
-  document.getElementById('numPlayers').value = state.numPlayers || 15;
-  document.getElementById('numCourts').value = state.numCourts || 3;
-  document.getElementById('numRounds').value = state.numRounds || 15;
+  document.getElementById('numPlayers').value = state.numPlayers || 20;
+  document.getElementById('numCourts').value = state.numCourts || 4;
+  document.getElementById('numRounds').value = state.numRounds || 10;
   document.getElementById('preferMixed').checked = state.preferMixed !== false;
 
   // Restore grids (skipSave=true to avoid overwriting restored data)
   playerData = state.playerData || [];
   courtData = state.courtData || [];
-  buildPlayerGrid(state.numPlayers || 15, true);
-  buildCourtInputs(state.numCourts || 3, true);
+  buildPlayerGrid(state.numPlayers || 20, true);
+  buildCourtInputs(state.numCourts || 4, true);
 
   // Restore schedule if it was generated
   if (state.hasSchedule && state.scheduleResult && state.scheduleNames) {
