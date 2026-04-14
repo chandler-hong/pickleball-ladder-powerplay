@@ -46,6 +46,7 @@ function buildPlayerGrid(count, skipSave) {
         toggle.classList.remove('gender-undetected');
         const hint = this.parentElement.querySelector('.gender-hint');
         if (hint) hint.remove();
+        checkGenderWarning();
       } else if (this.value.trim()) {
         toggle.classList.add('gender-undetected');
         if (!this.parentElement.querySelector('.gender-hint')) {
@@ -100,13 +101,14 @@ function buildPlayerGrid(count, skipSave) {
     });
     // Save on gender toggle change; dismiss undetected hint on manual toggle
     const dismissHint = function() {
-      const pi = this.name.slice(1); // "g3" → "3"
+      const pi = this.name.slice(1);
       const row = document.getElementById(`p${pi}`).parentElement;
       const toggle = row.querySelector('.gender-toggle');
       toggle.classList.remove('gender-undetected');
       const hint = row.querySelector('.gender-hint');
       if (hint) hint.remove();
       saveState();
+      checkGenderWarning();
     };
     document.getElementById(`g${i}m`).addEventListener('change', dismissHint);
     document.getElementById(`g${i}f`).addEventListener('change', dismissHint);
@@ -152,18 +154,52 @@ document.getElementById('numPlayers').addEventListener('input', function() {
   const v = parseInt(this.value);
   if (v >= 4 && v <= 40) buildPlayerGrid(v);
   saveState();
+  checkGenderWarning();
 });
 document.getElementById('numCourts').addEventListener('input', function() {
   this.classList.remove('input-error');
   const v = parseInt(this.value);
   if (v >= 1 && v <= 10) buildCourtInputs(v);
   saveState();
+  checkGenderWarning();
 });
 document.getElementById('numRounds').addEventListener('input', function() {
   this.classList.remove('input-error');
   saveState();
 });
-document.getElementById('preferMixed').addEventListener('change', saveState);
+document.getElementById('preferMixed').addEventListener('change', () => { saveState(); checkGenderWarning(); });
+
+function checkGenderWarning() {
+  const warning = document.getElementById('genderWarning');
+  if (!warning) return;
+  const preferMixed = document.getElementById('preferMixed').checked;
+  const numPlayers = parseInt(document.getElementById('numPlayers').value) || 0;
+  const numCourts = parseInt(document.getElementById('numCourts').value) || 0;
+  if (!preferMixed || numPlayers < 4 || numCourts < 1 || numPlayers < numCourts * 4) {
+    warning.style.display = 'none';
+    return;
+  }
+  let totalM = 0, totalF = 0;
+  for (let i = 0; i < currentPlayerCount; i++) {
+    const gf = document.getElementById(`g${i}f`);
+    if (gf && gf.checked) totalF++; else totalM++;
+  }
+  if (totalM === 0 || totalF === 0) { warning.style.display = 'none'; return; }
+  const numSitOuts = numPlayers - numCourts * 4;
+  const lo = Math.max(0, numSitOuts - totalF);
+  const hi = Math.min(numSitOuts, totalM);
+  const needParity = totalM % 2; // sitM must match this parity for even playM
+  let canAvoid = false;
+  for (let sitM = lo; sitM <= hi; sitM++) {
+    if (sitM % 2 === needParity) { canAvoid = true; break; }
+  }
+  if (!canAvoid) {
+    warning.innerHTML = `<strong>Note:</strong> With ${totalM} male${totalM !== 1 ? 's' : ''} and ${numSitOuts === 0 ? 'no byes' : numSitOuts + ' bye' + (numSitOuts !== 1 ? 's' : '')}, some courts will have uneven gender splits (3M/1F or 1M/3F). This is mathematically unavoidable with an odd number of males playing.`;
+    warning.style.display = 'block';
+  } else {
+    warning.style.display = 'none';
+  }
+}
 
 function fillDefaults() {
   const picks = pickRandomNames(currentPlayerCount);
@@ -172,6 +208,7 @@ function fillDefaults() {
     document.getElementById(`g${i}${picks[i].gender.toLowerCase()}`).checked = true;
   }
   saveState();
+  checkGenderWarning();
 }
 
 function newTournament() {
@@ -318,15 +355,33 @@ function generate() {
     courtNames.push(`Court ${document.getElementById('court' + i).value || (i + 1)}`);
   }
 
-  // Show loading overlay, defer heavy work so the browser can paint
   const overlay = document.createElement('div');
   overlay.className = 'generating-overlay';
-  overlay.innerHTML = '<div class="generating-spinner"></div><div class="generating-text">Generating schedule\u2026</div>';
+  overlay.innerHTML = '<div class="generating-spinner"></div>' +
+    '<div class="generating-text" id="genText">Optimizing schedule\u2026</div>' +
+    '<div class="generating-progress"><div class="generating-progress-fill" id="genBar"></div></div>' +
+    '<div class="generating-detail" id="genDetail"></div>';
   document.body.appendChild(overlay);
 
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      const scheduleResult = generateBestSchedule(numPlayers, numCourts, rounds, genders, preferMixed);
+  generateBestScheduleAsync(numPlayers, numCourts, rounds, genders, preferMixed,
+    function onProgress(info) {
+      var bar = document.getElementById('genBar');
+      var text = document.getElementById('genText');
+      var detail = document.getElementById('genDetail');
+      if (bar) bar.style.width = info.pct + '%';
+      if (text) text.textContent = 'Optimizing\u2026 ' + info.pct + '% (' + info.iterations + ' iterations)';
+      if (detail && info.score) {
+        var parts = [];
+        if (info.score.maxPartner <= 1) parts.push('\u2713 no partner repeats');
+        else parts.push(info.score.maxPartner + '\u00d7 max partner');
+        if (info.score.genderBadCourts === 0) parts.push('\u2713 gender balanced');
+        else parts.push(info.score.genderBadCourts + ' uneven courts');
+        parts.push(info.score.maxOpp + '\u00d7 max opponent');
+        if (info.score.byeSpread <= 1) parts.push('\u2713 byes fair');
+        detail.textContent = parts.join('  \u00b7  ');
+      }
+    },
+    function onComplete(scheduleResult) {
       lastFullResult = scheduleResult;
       scheduleCourtNames = courtNames;
       renderSchedule(scheduleResult, names, courtNames);
@@ -335,8 +390,8 @@ function generate() {
       document.getElementById('scheduleSection').scrollIntoView({ behavior: 'smooth' });
       saveState();
       overlay.remove();
-    }, 20);
-  });
+    }
+  );
 }
 
 // (totalRounds, numCourtsInSchedule, roundWinners, scheduleData, scheduleNames,

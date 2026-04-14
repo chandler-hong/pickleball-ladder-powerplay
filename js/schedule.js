@@ -69,16 +69,14 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
     if (numSitOuts > 0) {
       const globalMinSitOut = Math.min(...sitOutCount);
       const idealCumMaleByes = (r + 1) * idealSitMPerRound;
-      let bestSitM = 0, bestUnfair = Infinity, bestCooldown = Infinity;
-      let bestGenderDev = Infinity, bestFairness = Infinity;
 
-      for (let sitM = Math.max(0, numSitOuts - totalF); sitM <= Math.min(numSitOuts, totalM); sitM++) {
+      function evaluateSitM(sitM, skipMixed) {
         const sitF = numSitOuts - sitM;
         const playM = totalM - sitM;
         const playF = totalF - sitF;
-        if ((playM + playF) % 2 !== 0) continue;
-        // With preferMixed, ensure even male count to avoid forced 1M/3F or 3M/1F courts
-        if (preferMixed && playM > 0 && playF > 0 && playM % 2 !== 0) continue;
+        if (sitF < 0 || sitF > totalF) return null;
+        if ((playM + playF) % 2 !== 0) return null;
+        if (!skipMixed && preferMixed && playM > 0 && playF > 0 && playM % 2 !== 0) return null;
 
         let cooldownViolations = 0, unfair = 0, fairness = 0;
         for (let i = 0; i < sitM; i++) {
@@ -91,21 +89,57 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
           if (sitOutCount[femalesByPriority[i]] > globalMinSitOut) unfair++;
           fairness += sitOutCount[femalesByPriority[i]];
         }
-
         const genderDev = Math.abs((cumMaleByes + sitM) - idealCumMaleByes);
-
-        if (unfair < bestUnfair ||
-            (unfair === bestUnfair && cooldownViolations < bestCooldown) ||
-            (unfair === bestUnfair && cooldownViolations === bestCooldown && genderDev < bestGenderDev) ||
-            (unfair === bestUnfair && cooldownViolations === bestCooldown && genderDev === bestGenderDev && fairness < bestFairness)) {
-          bestUnfair = unfair;
-          bestCooldown = cooldownViolations;
-          bestGenderDev = genderDev;
-          bestFairness = fairness;
-          bestSitM = sitM;
-        }
+        return { sitM, unfair, cooldownViolations, fairness, genderDev };
       }
 
+      function pickBest(candidates) {
+        let best = candidates[0];
+        for (let i = 1; i < candidates.length; i++) {
+          const c = candidates[i];
+          if (c.unfair < best.unfair ||
+              (c.unfair === best.unfair && c.cooldownViolations < best.cooldownViolations) ||
+              (c.unfair === best.unfair && c.cooldownViolations === best.cooldownViolations && c.fairness < best.fairness) ||
+              (c.unfair === best.unfair && c.cooldownViolations === best.cooldownViolations && c.fairness === best.fairness && c.genderDev < best.genderDev)) {
+            best = c;
+          }
+        }
+        return best;
+      }
+
+      // First pass: respect preferMixed
+      let candidates = [];
+      for (let sitM = Math.max(0, numSitOuts - totalF); sitM <= Math.min(numSitOuts, totalM); sitM++) {
+        const ev = evaluateSitM(sitM, false);
+        if (ev) candidates.push(ev);
+      }
+
+      // If the best mixed-valid option still has unfair > 0, relax preferMixed
+      // to allow fairer bye distribution at the cost of one odd-gender court
+      let best;
+      if (candidates.length > 0) {
+        best = pickBest(candidates);
+        if (best.unfair > 0) {
+          const relaxed = [];
+          for (let sitM = Math.max(0, numSitOuts - totalF); sitM <= Math.min(numSitOuts, totalM); sitM++) {
+            const ev = evaluateSitM(sitM, true);
+            if (ev) relaxed.push(ev);
+          }
+          if (relaxed.length > 0) {
+            const relaxedBest = pickBest(relaxed);
+            if (relaxedBest.unfair < best.unfair) best = relaxedBest;
+          }
+        }
+      } else {
+        // No mixed-valid options at all; use all options
+        for (let sitM = Math.max(0, numSitOuts - totalF); sitM <= Math.min(numSitOuts, totalM); sitM++) {
+          const ev = evaluateSitM(sitM, true);
+          if (ev) candidates.push(ev);
+        }
+        best = pickBest(candidates);
+      }
+
+      const bestSitM = best.sitM;
       const bestSitF = numSitOuts - bestSitM;
       cumMaleByes += bestSitM;
       sitOuts = new Set([
@@ -147,7 +181,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
     // subset to minimize partner repeats while preserving never-met
     // pairs for opponent encounters, and avoiding recent courtmates.
     if (poolM.length > 0 && poolF.length > 0) {
-      const mfPairs = greedyBipartiteMatch(poolM, poolF, partnerCount, opponentCount, recentCourt);
+      const mfPairs = greedyBipartiteMatch(poolM, poolF, partnerCount, opponentCount, recentCourt, courtCount);
       const matchedM = new Set(mfPairs.map(p => p[0]));
       const matchedF = new Set(mfPairs.map(p => p[1]));
 
@@ -200,10 +234,9 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
         }
       }
 
-      // Distribute same-gender overflow across rounds to avoid partner repeats.
-      // Instead of concentrating all same-gender play into late rounds,
-      // proactively release MF pairs when the unique-partner pool is getting tight.
-      if (unmatchedM.length === 0 && unmatchedF.length === 0 && mfPairs.length >= 4) {
+      // Proactively release MF pairs to same-gender when the unique MF
+      // partner pool is running low, preventing forced repeats in later rounds.
+      if (mfPairs.length >= 2) {
         let minRemainingMF = Infinity;
         for (const m of poolM) {
           let avail = 0;
@@ -217,28 +250,36 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
         }
         const remainingRounds = numRounds - r;
         if (minRemainingMF < remainingRounds) {
-          const releaseProb = (remainingRounds - minRemainingMF) / remainingRounds;
-          if (Math.random() < releaseProb) {
-            // Release 4 MF pairs → 2 MM + 2 FF (clean 4M + 4F courts)
-            mfPairs.sort((a, b) => partnerCount[b[0]][b[1]] - partnerCount[a[0]][a[1]]);
-            const releaseCount = Math.min(4, mfPairs.length);
-            const released = mfPairs.splice(0, releaseCount);
-            unmatchedM = released.map(p => p[0]);
-            unmatchedF = released.map(p => p[1]);
+          // Pick a release count that keeps both unmatched pools even-sized
+          let releaseCount = 0;
+          for (let rc = 4; rc >= 2; rc--) {
+            if (rc > mfPairs.length) continue;
+            if ((unmatchedM.length + rc) % 2 === 0 && (unmatchedF.length + rc) % 2 === 0) {
+              releaseCount = rc; break;
+            }
+          }
+          if (releaseCount >= 2) {
+            const deficit = remainingRounds - minRemainingMF;
+            const shouldRelease = deficit >= minRemainingMF || Math.random() < deficit / remainingRounds;
+            if (shouldRelease) {
+              mfPairs.sort((a, b) => partnerCount[b[0]][b[1]] - partnerCount[a[0]][a[1]]);
+              const released = mfPairs.splice(0, releaseCount);
+              for (const p of released) { unmatchedM.push(p[0]); unmatchedF.push(p[1]); }
+            }
           }
         }
       }
 
       for (const pair of mfPairs) partnerships.push(pair);
       if (unmatchedM.length > 0) {
-        for (const pair of greedySameGenderMatch(unmatchedM, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
+        for (const pair of greedySameGenderMatch(unmatchedM, partnerCount, opponentCount, recentCourt, courtCount)) partnerships.push(pair);
       }
       if (unmatchedF.length > 0) {
-        for (const pair of greedySameGenderMatch(unmatchedF, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
+        for (const pair of greedySameGenderMatch(unmatchedF, partnerCount, opponentCount, recentCourt, courtCount)) partnerships.push(pair);
       }
     } else {
       const pool = poolM.length > 0 ? poolM : poolF;
-      for (const pair of greedySameGenderMatch(pool, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
+      for (const pair of greedySameGenderMatch(pool, partnerCount, opponentCount, recentCourt, courtCount)) partnerships.push(pair);
     }
 
     // =========================================================
@@ -314,19 +355,16 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
 // augmenting paths (Kuhn's algorithm), then fill remaining greedily.
 // Zero partner repeats whenever mathematically possible.
 // -----------------------------------------------------------------
-function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recentCourt) {
+function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recentCourt, courtCount) {
   const nm = males.length, nf = females.length;
   const target = Math.min(nm, nf);
 
-  // Combined weight: partner repeats dominate (×4), recent courtmates
-  // get a minimal penalty to prevent role flips, and never-met pairs
-  // get a small penalty to preserve them for opponent encounters.
   function edgeWeight(mi, fj) {
     const m = males[mi], f = females[fj];
     const pw = partnerCount[m][f];
     const neverOpp = opponentCount[m][f] === 0 ? 1 : 0;
     const recentSame = recentCourt[m][f] > 0 ? 2 : 0;
-    return pw * 4 + recentSame + neverOpp;
+    return pw * 200 + recentSame + neverOpp;
   }
 
   let maxWeight = 0;
@@ -374,7 +412,7 @@ function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recen
 // Same-gender matching: brute-force enumerate all perfect matchings
 // for small pools (≤12), greedy fallback for larger.
 // -----------------------------------------------------------------
-function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt) {
+function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt, courtCount) {
   const n = players.length;
   const target = Math.floor(n / 2);
   if (target === 0) return [];
@@ -384,13 +422,15 @@ function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt
     const pw = partnerCount[pa][pb];
     const neverOpp = opponentCount[pa][pb] === 0 ? 1 : 0;
     const recentSame = recentCourt[pa][pb] > 0 ? 2 : 0;
-    return pw * 4 + recentSame + neverOpp;
+    return pw * 200 + recentSame + neverOpp;
   }
 
-  if (n <= 12) {
+  if (n <= 20) {
     let bestPairs = null, bestWeight = Infinity;
+    let enumDeadline = Date.now() + (n <= 12 ? 50 : 8);
 
     function enumerate(remaining, pairs, weight) {
+      if (bestWeight === 0) return;
       if (pairs.length === target) {
         if (weight < bestWeight) {
           bestWeight = weight;
@@ -399,21 +439,24 @@ function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt
         return;
       }
       if (weight >= bestWeight) return;
+      if (Date.now() > enumDeadline) return;
       const first = remaining[0];
       for (let i = 1; i < remaining.length; i++) {
         const w = pairWeight(first, remaining[i]);
+        if (weight + w >= bestWeight) continue;
         const next = remaining.filter((_, idx) => idx !== 0 && idx !== i);
         pairs.push([players[first], players[remaining[i]]]);
         enumerate(next, pairs, weight + w);
         pairs.pop();
+        if (bestWeight === 0) return;
       }
     }
 
     enumerate(Array.from({length: n}, (_, i) => i), [], 0);
-    return bestPairs ? shuffle(bestPairs) : [];
+    if (bestPairs) return shuffle(bestPairs);
   }
 
-  // Greedy fallback for large pools
+  // Greedy fallback
   const candidates = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
@@ -471,7 +514,7 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
       const [b1, b2] = p2;
       const oppCounts = [opponentCount[a1][b1], opponentCount[a1][b2],
                          opponentCount[a2][b1], opponentCount[a2][b2]];
-      const oppScore = oppCounts.reduce((s, v) => s + v * v, 0);
+      const oppScore = oppCounts.reduce((s, v) => s + v * v * v, 0);
       const neverMetBonus = oppCounts.filter(v => v === 0).length;
 
       let courtScore = 0;
@@ -567,6 +610,10 @@ function scoreSchedule(result, n, genders) {
   const minSitOut = sitOutCount ? Math.min(...sitOutCount) : 0;
   const byeSpread = maxSitOut - minSitOut;
 
+  // Mid-schedule bye fairness: track worst spread at any point during the schedule
+  let maxMidByeSpread = 0;
+  const runningByeCount = new Array(n).fill(0);
+
   // Co-bye diversity: how often the same pair sits out together
   let maxCoBye = 0;
   const coByeMatrix = Array.from({length: n}, () => new Array(n).fill(0));
@@ -576,11 +623,15 @@ function scoreSchedule(result, n, genders) {
         coByeMatrix[round.sitOuts[i]][round.sitOuts[j]]++;
         coByeMatrix[round.sitOuts[j]][round.sitOuts[i]]++;
       }
+    round.sitOuts.forEach(p => runningByeCount[p]++);
+    const midSpread = Math.max(...runningByeCount) - Math.min(...runningByeCount);
+    if (midSpread > maxMidByeSpread) maxMidByeSpread = midSpread;
   }
   for (let i = 0; i < n; i++)
     for (let j = i + 1; j < n; j++)
       if (coByeMatrix[i][j] > maxCoBye) maxCoBye = coByeMatrix[i][j];
 
+  let maxCourt = 0, totalCourtExcess = 0;
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       const opp = opponentCount[i][j];
@@ -591,6 +642,10 @@ function scoreSchedule(result, n, genders) {
       const part = partnerCount[i][j];
       if (part > maxPartner) maxPartner = part;
       if (part > 1) totalPartnerExcess += part - 1;
+
+      const court = result.courtCount[i][j];
+      if (court > maxCourt) maxCourt = court;
+      if (court > 1) totalCourtExcess += court - 1;
     }
   }
 
@@ -634,22 +689,27 @@ function scoreSchedule(result, n, genders) {
     }
   }
 
-  return { genderBadCourts, byeSpread, maxCoBye, partnerToOpp, maxOpp, neverMet, totalOppExcess, maxPartner, totalPartnerExcess };
+  return { genderBadCourts, byeSpread, maxMidByeSpread, maxCoBye, partnerToOpp, maxOpp, neverMet, totalOppExcess, maxPartner, totalPartnerExcess, maxCourt, totalCourtExcess };
 }
 
 function compareScores(a, b) {
   if (a.genderBadCourts !== b.genderBadCourts) return a.genderBadCourts - b.genderBadCourts;
-  // Fair bye distribution and diverse bye groups
+  // Zero partner repeats is the top priority after gender
+  if (a.maxPartner !== b.maxPartner) return a.maxPartner - b.maxPartner;
+  // Fair bye distribution: final spread, mid-schedule spread, and diverse bye groups
   if (a.byeSpread !== b.byeSpread) return a.byeSpread - b.byeSpread;
+  if (a.maxMidByeSpread !== b.maxMidByeSpread) return a.maxMidByeSpread - b.maxMidByeSpread;
   if (a.maxCoBye !== b.maxCoBye) return a.maxCoBye - b.maxCoBye;
-  // Zero partner repeats
-  if (a.maxPartner !== b.maxPartner) return a.maxPartner - b.maxPartner;
-  // Then balance role flips, opponent diversity, and coverage
-  const aScore = a.partnerToOpp * 3 + a.maxOpp * 10 + a.neverMet * 2;
-  const bScore = b.partnerToOpp * 3 + b.maxOpp * 10 + b.neverMet * 2;
+  // Court co-occurrence: prefer lower max same-court
+  if (a.maxCourt !== b.maxCourt) return a.maxCourt - b.maxCourt;
+  // Opponent diversity: prefer lower max opponent repeats
+  if (a.maxOpp !== b.maxOpp) return a.maxOpp - b.maxOpp;
+  // Then balance role flips, coverage, and excess spreads
+  const aScore = a.partnerToOpp * 3 + a.neverMet * 2;
+  const bScore = b.partnerToOpp * 3 + b.neverMet * 2;
   if (aScore !== bScore) return aScore - bScore;
+  if (a.totalCourtExcess !== b.totalCourtExcess) return a.totalCourtExcess - b.totalCourtExcess;
   if (a.totalOppExcess !== b.totalOppExcess) return a.totalOppExcess - b.totalOppExcess;
-  if (a.maxPartner !== b.maxPartner) return a.maxPartner - b.maxPartner;
   return a.totalPartnerExcess - b.totalPartnerExcess;
 }
 
@@ -672,4 +732,34 @@ function generateBestSchedule(numPlayers, numCourts, numRounds, genders, preferM
   } while (Date.now() - start < timeBudgetMs);
 
   return bestResult;
+}
+
+function generateBestScheduleAsync(numPlayers, numCourts, numRounds, genders, preferMixed, onProgress, onComplete) {
+  const timeBudgetMs = 10000;
+  const start = Date.now();
+  let bestResult = null;
+  let bestScore = null;
+  let iterations = 0;
+
+  function runChunk() {
+    var chunkEnd = Math.min(Date.now() + 80, start + timeBudgetMs);
+    while (Date.now() < chunkEnd) {
+      var result = generateSchedule(numPlayers, numCourts, numRounds, null, genders, preferMixed);
+      var score = scoreSchedule(result, numPlayers, genders);
+      iterations++;
+      if (!bestScore || compareScores(score, bestScore) < 0) {
+        bestScore = score;
+        bestResult = result;
+      }
+    }
+    var elapsed = Date.now() - start;
+    if (onProgress) onProgress({ iterations: iterations, pct: Math.min(100, Math.round(elapsed / timeBudgetMs * 100)), score: bestScore });
+    if (elapsed < timeBudgetMs) {
+      setTimeout(runChunk, 0);
+    } else {
+      onComplete(bestResult);
+    }
+  }
+
+  setTimeout(runChunk, 0);
 }

@@ -534,6 +534,13 @@
     text-decoration-color: rgba(255,255,255,0.12);
   }
 
+  .gender-warning {
+    margin-top: 0.75rem; padding: 0.6rem 0.85rem;
+    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.25);
+    border-radius: 8px; font-size: 0.78rem; color: #fbbf24; line-height: 1.45;
+  }
+  .gender-warning strong { color: #fde68a; }
+
   /* Loading overlay */
   .generating-overlay {
     position: fixed; inset: 0; z-index: 1000;
@@ -548,7 +555,20 @@
     animation: spin 0.7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .generating-text { font-size: 0.9rem; font-weight: 600; color: #6b7280; }
+  .generating-text { font-size: 0.9rem; font-weight: 600; color: #94a3b8; }
+  .generating-progress {
+    width: 220px; height: 4px; border-radius: 2px;
+    background: rgba(129,140,248,0.12); overflow: hidden;
+  }
+  .generating-progress-fill {
+    height: 100%; width: 0; border-radius: 2px;
+    background: linear-gradient(90deg, #818cf8, #a78bfa);
+    transition: width 0.15s ease;
+  }
+  .generating-detail {
+    font-size: 0.75rem; color: #6b7280; letter-spacing: 0.01em;
+    max-width: 380px; text-align: center;
+  }
 
   @media (max-width: 640px) {
     body { padding: 1.5rem 0.75rem; }

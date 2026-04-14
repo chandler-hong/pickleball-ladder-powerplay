@@ -10,8 +10,8 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script>const APP_VERSION = "2.0.0";</script>
-<link rel="stylesheet" href="css/styles.css?v=2.0.0">
+<script>const APP_VERSION = "2.1.0";</script>
+<script>document.write('<link rel="stylesheet" href="css/styles.css?v=' + APP_VERSION + '">');</script>
 </head>
 <body>
 <div class="container">
@@ -60,6 +60,7 @@
       </label>
       <span class="option-label" onclick="document.getElementById('preferMixed').click()">Prefer mixed doubles (1M + 1F per team)</span>
     </div>
+    <div id="genderWarning" class="gender-warning" style="display:none;"></div>
   </div>
 
   <div class="card">
@@ -117,11 +118,10 @@
   <div class="version-indicator" id="versionIndicator"></div>
 </div>
 
-<script src="js/utils.js?v=2.0.0"></script>
-<script src="js/schedule.js?v=2.0.0"></script>
-<script src="js/state.js?v=2.0.0"></script>
-<script src="js/schedule-ui.js?v=2.0.0"></script>
-<script src="js/ladder.js?v=2.0.0"></script>
+<script>
+var _scripts = ['js/utils.js','js/schedule.js','js/state.js','js/schedule-ui.js','js/ladder.js'];
+for (var i = 0; i < _scripts.length; i++) document.write('<script src="' + _scripts[i] + '?v=' + APP_VERSION + '"><\/script>');
+</script>
 <script>
 restoreState(); restoreLadderState();
 document.getElementById('versionIndicator').textContent = 'v' + APP_VERSION;
