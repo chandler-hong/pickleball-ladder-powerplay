@@ -9,7 +9,8 @@
 // Bye gap is maximized automatically via roundsSinceLastBye.
 // Theoretical max gap = floor(numPlayers / numSitOuts).
 
-function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders, preferMixed) {
+function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed) {
+  if (numPlayers < numCourts * 4) throw new Error(`Need at least ${numCourts * 4} players for ${numCourts} courts`);
   const n = numPlayers;
   const playersPerRound = numCourts * 4;
   const numSitOuts = n - playersPerRound;
@@ -30,6 +31,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
   let prev1Partner = zeroPairMatrix();
   let prev2Partner = zeroPairMatrix();
   const sitOutHistory = [];
+  const coByeCount = Array.from({length: n}, () => new Array(n).fill(0));
   let prevSameGenderPlayers = new Set();
 
   for (let r = 0; r < numRounds; r++) {
@@ -49,6 +51,13 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
     // extra candidates to choose from, enabling diverse bye groupings.
     const idealGap = numSitOuts > 0 ? Math.floor(n / numSitOuts) : Infinity;
     const hardCooldown = Math.max(2, idealGap - 2);
+    const coByeScore = new Array(n).fill(0);
+    if (sitOutHistory.length > 0) {
+      const lastByers = sitOutHistory[sitOutHistory.length - 1];
+      for (let i = 0; i < n; i++) {
+        lastByers.forEach(p => { coByeScore[i] += coByeCount[i][p]; });
+      }
+    }
     const sitOutPriority = (a, b) => {
       const aRecent = roundsSinceLastBye[a] <= hardCooldown ? 1 : 0;
       const bRecent = roundsSinceLastBye[b] <= hardCooldown ? 1 : 0;
@@ -57,6 +66,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
         if (roundsSinceLastBye[a] !== roundsSinceLastBye[b]) return roundsSinceLastBye[b] - roundsSinceLastBye[a];
       }
       if (sitOutCount[a] !== sitOutCount[b]) return sitOutCount[a] - sitOutCount[b];
+      if (coByeScore[a] !== coByeScore[b]) return coByeScore[a] - coByeScore[b];
       return randKeys[a] - randKeys[b];
     };
 
@@ -155,7 +165,6 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
 
     const poolM = shuffle(playing.filter(i => genders[i] === 'M'));
     const poolF = shuffle(playing.filter(i => genders[i] === 'F'));
-    const numMixedCourts = Math.min(Math.floor(poolM.length / 2), Math.floor(poolF.length / 2));
 
     // =========================================================
     // PHASE 2: Partnership Formation (Greedy Bipartite Matching)
@@ -181,7 +190,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
     // subset to minimize partner repeats while preserving never-met
     // pairs for opponent encounters, and avoiding recent courtmates.
     if (poolM.length > 0 && poolF.length > 0) {
-      const mfPairs = greedyBipartiteMatch(poolM, poolF, partnerCount, opponentCount, recentCourt, courtCount);
+      const mfPairs = greedyBipartiteMatch(poolM, poolF, partnerCount, opponentCount, recentCourt);
       const matchedM = new Set(mfPairs.map(p => p[0]));
       const matchedF = new Set(mfPairs.map(p => p[1]));
 
@@ -272,14 +281,14 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
 
       for (const pair of mfPairs) partnerships.push(pair);
       if (unmatchedM.length > 0) {
-        for (const pair of greedySameGenderMatch(unmatchedM, partnerCount, opponentCount, recentCourt, courtCount)) partnerships.push(pair);
+        for (const pair of greedySameGenderMatch(unmatchedM, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
       }
       if (unmatchedF.length > 0) {
-        for (const pair of greedySameGenderMatch(unmatchedF, partnerCount, opponentCount, recentCourt, courtCount)) partnerships.push(pair);
+        for (const pair of greedySameGenderMatch(unmatchedF, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
       }
     } else {
       const pool = poolM.length > 0 ? poolM : poolF;
-      for (const pair of greedySameGenderMatch(pool, partnerCount, opponentCount, recentCourt, courtCount)) partnerships.push(pair);
+      for (const pair of greedySameGenderMatch(pool, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
     }
 
     // =========================================================
@@ -337,6 +346,13 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
       prev1Partner[pb1][pb2] = 1; prev1Partner[pb2][pb1] = 1;
     }
     sitOutHistory.push(new Set(sitOuts));
+    const sitArr = [...sitOuts];
+    for (let x = 0; x < sitArr.length; x++) {
+      for (let y = x + 1; y < sitArr.length; y++) {
+        coByeCount[sitArr[x]][sitArr[y]]++;
+        coByeCount[sitArr[y]][sitArr[x]]++;
+      }
+    }
 
     // Track who was on a same-gender court this round for rotation next round
     prevSameGenderPlayers = new Set();
@@ -355,7 +371,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, _iterations, genders
 // augmenting paths (Kuhn's algorithm), then fill remaining greedily.
 // Zero partner repeats whenever mathematically possible.
 // -----------------------------------------------------------------
-function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recentCourt, courtCount) {
+function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recentCourt) {
   const nm = males.length, nf = females.length;
   const target = Math.min(nm, nf);
 
@@ -412,7 +428,7 @@ function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recen
 // Same-gender matching: brute-force enumerate all perfect matchings
 // for small pools (≤12), greedy fallback for larger.
 // -----------------------------------------------------------------
-function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt, courtCount) {
+function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt) {
   const n = players.length;
   const target = Math.floor(n / 2);
   if (target === 0) return [];
@@ -427,7 +443,7 @@ function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt
 
   if (n <= 20) {
     let bestPairs = null, bestWeight = Infinity;
-    let enumDeadline = Date.now() + (n <= 12 ? 50 : 8);
+    let enumDeadline = Date.now() + (n <= 12 ? 50 : 20);
 
     function enumerate(remaining, pairs, weight) {
       if (bestWeight === 0) return;
@@ -460,10 +476,10 @@ function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt
   const candidates = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      candidates.push({ a: players[i], b: players[j], weight: pairWeight(i, j) });
+      candidates.push({ a: players[i], b: players[j], weight: pairWeight(i, j), rand: Math.random() });
     }
   }
-  candidates.sort((a, b) => a.weight - b.weight || Math.random() - 0.5);
+  candidates.sort((a, b) => a.weight - b.weight || a.rand - b.rand);
 
   const used = new Set();
   const result = [];
@@ -485,21 +501,19 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
   const numCourts = Math.floor(np / 2);
   const useExhaustive = np <= 12;
 
-  const pairScore = {};
+  const pairScore = Array.from({length: np}, () => new Array(np));
   for (let i = 0; i < np; i++) {
     for (let j = i + 1; j < np; j++) {
       const p1 = partnerships[i];
       const p2 = partnerships[j];
       const allFour = [...p1, ...p2];
 
-      // General courtmate avoidance (all 6 pairings on the court)
       let prevViolations = 0;
       for (let x = 0; x < 4; x++) {
         for (let y = x + 1; y < 4; y++) {
           prevViolations += recentCourt[allFour[x]][allFour[y]];
         }
       }
-      // Extra penalty: recent partners facing each other as opponents
       const [ra1, ra2] = p1;
       const [rb1, rb2] = p2;
       prevViolations += recentPartner[ra1][rb1] + recentPartner[ra1][rb2] +
@@ -526,7 +540,8 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
 
       const hard = prevViolations * 1000 + genderViolation;
       const soft = oppScore * 10 - neverMetBonus * 3 + courtScore;
-      pairScore[i + ',' + j] = { hard, soft };
+      pairScore[i][j] = { hard, soft };
+      pairScore[j][i] = pairScore[i][j];
     }
   }
 
@@ -545,7 +560,6 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
         return;
       }
       if (totalHard > bestHard) return;
-      if (totalHard === bestHard && totalSoft >= bestSoft) return;
 
       let first = -1;
       for (let i = 0; i < np; i++) { if (!used[i]) { first = i; break; } }
@@ -554,7 +568,7 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
       used[first] = true;
       for (let j = first + 1; j < np; j++) {
         if (used[j]) continue;
-        const s = pairScore[first + ',' + j];
+        const s = pairScore[first][j];
         used[j] = true;
         courts.push([first, j]);
         enumerate(used, courts, totalHard + s.hard, totalSoft + s.soft);
@@ -572,11 +586,12 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
   const sorted = [];
   for (let i = 0; i < np; i++) {
     for (let j = i + 1; j < np; j++) {
-      const s = pairScore[i + ',' + j];
+      const s = pairScore[i][j];
       sorted.push({ i, j, hard: s.hard, soft: s.soft });
     }
   }
-  sorted.sort((a, b) => (a.hard - b.hard) || (a.soft - b.soft) || (Math.random() - 0.5));
+  for (const s of sorted) s.rand = Math.random();
+  sorted.sort((a, b) => (a.hard - b.hard) || (a.soft - b.soft) || (a.rand - b.rand));
 
   const used = new Set();
   const courts = [];
@@ -721,7 +736,7 @@ function generateBestSchedule(numPlayers, numCourts, numRounds, genders, preferM
   let iterations = 0;
 
   do {
-    const result = generateSchedule(numPlayers, numCourts, numRounds, null, genders, preferMixed);
+    const result = generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed);
     const score = scoreSchedule(result, numPlayers, genders);
     iterations++;
 
@@ -742,10 +757,10 @@ function generateBestScheduleAsync(numPlayers, numCourts, numRounds, genders, pr
   let iterations = 0;
 
   function runChunk() {
-    var chunkEnd = Math.min(Date.now() + 80, start + timeBudgetMs);
+    const chunkEnd = Math.min(Date.now() + 80, start + timeBudgetMs);
     while (Date.now() < chunkEnd) {
-      var result = generateSchedule(numPlayers, numCourts, numRounds, null, genders, preferMixed);
-      var score = scoreSchedule(result, numPlayers, genders);
+      const result = generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed);
+      const score = scoreSchedule(result, numPlayers, genders);
       iterations++;
       if (!bestScore || compareScores(score, bestScore) < 0) {
         bestScore = score;
