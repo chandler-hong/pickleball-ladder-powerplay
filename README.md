@@ -68,4 +68,4 @@ Pure vanilla HTML, CSS, and JavaScript. No frameworks, no build step, no runtime
 
 ## Credits
 
-Tool created by Chandler Hong and Claude Opus 4.6.
+Tool created by Chandler Hong and Claude Opus 4.7.

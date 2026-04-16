@@ -1,6 +1,6 @@
 {
   "name": "pickleball-ladder-powerplay",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "PowerPlay Pickleball Ladder & Round Robin schedule generator",
   "private": true,
   "scripts": {
