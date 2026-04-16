@@ -1,0 +1,11 @@
+{
+  "name": "pickleball-ladder-powerplay",
+  "version": "2.3.0",
+  "description": "PowerPlay Pickleball Ladder & Round Robin schedule generator",
+  "private": true,
+  "scripts": {
+    "test": "node tests/schedule.test.js && node tests/stress.test.js",
+    "test:unit": "node tests/schedule.test.js",
+    "test:stress": "node tests/stress.test.js"
+  }
+}

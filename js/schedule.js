@@ -9,8 +9,70 @@
 // Bye gap is maximized automatically via roundsSinceLastBye.
 // Theoretical max gap = floor(numPlayers / numSitOuts).
 
+// Seedable pseudo-random number generator (Mulberry32) for deterministic
+// schedule generation in tests. Production code calls Math.random via the
+// default RNG; tests can call setScheduleRng(mulberry32(seed)) to make
+// generation reproducible.
+let _rng = Math.random;
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return function rng() {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function setScheduleRng(rng) { _rng = typeof rng === 'function' ? rng : Math.random; }
+function resetScheduleRng() { _rng = Math.random; }
+
+function _shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(_rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Tunable weights for the schedule quality heuristics. All other
+// coefficients in the algorithm should reference this object.
+const SCHEDULE_WEIGHTS = Object.freeze({
+  // Partnership matching (Phase 2): a single partner repeat must outrank
+  // any combination of other considerations, hence the large multiplier.
+  PARTNER_REPEAT_EDGE: 200,
+  // Small penalties that act as tiebreakers inside a given partner-repeat bucket.
+  RECENT_SAME_COURT_EDGE: 2,
+  NEVER_MET_BONUS_EDGE: 1,
+
+  // Court grouping (Phase 3)
+  HARD_MULTIPLIER: 1000,          // scales recent-courtmate + recent-partner violations
+  GENDER_VIOLATION: 1_000_000,    // MM vs FF, 3M/1F, 1M/3F -> must outrank everything else
+  OPPONENT_REPEAT_CUBIC: 10,      // soft penalty per (opponentCount)^3
+  NEVER_MET_OPPONENT_BONUS: 3,    // discount per never-met opponent pair
+  COURT_COOCCURRENCE_SOFT: 1,     // coefficient on courtCount term
+
+  // Role-flip decay (recent-history weights)
+  PREV1_COURT_DECAY: 3,
+  PREV2_COURT_DECAY: 1,
+  PREV1_PARTNER_DECAY: 5,
+  PREV2_PARTNER_DECAY: 2,
+
+  // Multi-start time budget
+  DEFAULT_TIME_BUDGET_MS: 10000,
+  ASYNC_CHUNK_MS: 80,
+});
+
 function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed) {
+  if (!Number.isInteger(numPlayers) || numPlayers <= 0) throw new Error(`numPlayers must be a positive integer (got ${numPlayers})`);
+  if (!Number.isInteger(numCourts) || numCourts <= 0) throw new Error(`numCourts must be a positive integer (got ${numCourts})`);
+  if (!Number.isInteger(numRounds) || numRounds <= 0) throw new Error(`numRounds must be a positive integer (got ${numRounds})`);
   if (numPlayers < numCourts * 4) throw new Error(`Need at least ${numCourts * 4} players for ${numCourts} courts`);
+  if (!Array.isArray(genders) || genders.length !== numPlayers) throw new Error(`genders must be an array of length ${numPlayers} (got length ${genders ? genders.length : 'undefined'})`);
+  for (let i = 0; i < genders.length; i++) {
+    if (genders[i] !== 'M' && genders[i] !== 'F') throw new Error(`genders[${i}] must be 'M' or 'F' (got ${JSON.stringify(genders[i])})`);
+  }
   const n = numPlayers;
   const playersPerRound = numCourts * 4;
   const numSitOuts = n - playersPerRound;
@@ -46,16 +108,29 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
     }
 
     const indices = Array.from({length: n}, (_, i) => i);
-    const randKeys = indices.map(() => Math.random());
+    const randKeys = indices.map(() => _rng());
     // Adaptive cooldown: set 2 less than the ideal gap so there are always
     // extra candidates to choose from, enabling diverse bye groupings.
     const idealGap = numSitOuts > 0 ? Math.floor(n / numSitOuts) : Infinity;
     const hardCooldown = Math.max(2, idealGap - 2);
+    // Co-bye score measures concentration of co-sitting partners — the maximum
+    // number of times a player has co-sat with any single other player, plus a
+    // small contribution from variance across partners. Lower = this player has
+    // sat out with a diverse set of others, so sitting them again is "safer"
+    // for overall group diversity. This broadens N4/A3 beyond adjacent rounds.
     const coByeScore = new Array(n).fill(0);
     if (sitOutHistory.length > 0) {
-      const lastByers = sitOutHistory[sitOutHistory.length - 1];
       for (let i = 0; i < n; i++) {
-        lastByers.forEach(p => { coByeScore[i] += coByeCount[i][p]; });
+        let maxPair = 0;
+        let sumSq = 0;
+        const row = coByeCount[i];
+        for (let j = 0; j < n; j++) {
+          if (row[j] > maxPair) maxPair = row[j];
+          sumSq += row[j] * row[j];
+        }
+        // Primary: max concentration. Secondary: sum of squares (encourages
+        // spreading co-byes evenly across many partners).
+        coByeScore[i] = maxPair * 1000 + sumSq;
       }
     }
     const sitOutPriority = (a, b) => {
@@ -86,33 +161,42 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
         const playF = totalF - sitF;
         if (sitF < 0 || sitF > totalF) return null;
         if ((playM + playF) % 2 !== 0) return null;
-        if (!skipMixed && preferMixed && playM > 0 && playF > 0 && playM % 2 !== 0) return null;
+        // In the strict pass, reject options that violate mixed-parity.
+        // In the relaxed pass, we still track it to prefer mixed-compatible
+        // options as a tiebreaker (see pickBest).
+        const mixedBad = (preferMixed && playM > 0 && playF > 0 && playM % 2 !== 0) ? 1 : 0;
+        if (!skipMixed && mixedBad) return null;
 
         let cooldownViolations = 0, unfair = 0, fairness = 0;
         for (let i = 0; i < sitM; i++) {
           if (roundsSinceLastBye[malesByPriority[i]] <= hardCooldown) cooldownViolations++;
           if (sitOutCount[malesByPriority[i]] > globalMinSitOut) unfair++;
-          fairness += sitOutCount[malesByPriority[i]];
+          // Squared fairness penalizes selecting players who have sat out more,
+          // producing a more even distribution than a plain sum (N8).
+          fairness += (sitOutCount[malesByPriority[i]] + 1) * (sitOutCount[malesByPriority[i]] + 1);
         }
         for (let i = 0; i < sitF; i++) {
           if (roundsSinceLastBye[femalesByPriority[i]] <= hardCooldown) cooldownViolations++;
           if (sitOutCount[femalesByPriority[i]] > globalMinSitOut) unfair++;
-          fairness += sitOutCount[femalesByPriority[i]];
+          fairness += (sitOutCount[femalesByPriority[i]] + 1) * (sitOutCount[femalesByPriority[i]] + 1);
         }
         const genderDev = Math.abs((cumMaleByes + sitM) - idealCumMaleByes);
-        return { sitM, unfair, cooldownViolations, fairness, genderDev };
+        return { sitM, unfair, cooldownViolations, fairness, mixedBad, genderDev };
       }
 
       function pickBest(candidates) {
         let best = candidates[0];
         for (let i = 1; i < candidates.length; i++) {
           const c = candidates[i];
-          if (c.unfair < best.unfair ||
-              (c.unfair === best.unfair && c.cooldownViolations < best.cooldownViolations) ||
-              (c.unfair === best.unfair && c.cooldownViolations === best.cooldownViolations && c.fairness < best.fairness) ||
-              (c.unfair === best.unfair && c.cooldownViolations === best.cooldownViolations && c.fairness === best.fairness && c.genderDev < best.genderDev)) {
-            best = c;
-          }
+          if (c.unfair < best.unfair) { best = c; continue; }
+          if (c.unfair !== best.unfair) continue;
+          if (c.cooldownViolations < best.cooldownViolations) { best = c; continue; }
+          if (c.cooldownViolations !== best.cooldownViolations) continue;
+          if (c.mixedBad < best.mixedBad) { best = c; continue; }
+          if (c.mixedBad !== best.mixedBad) continue;
+          if (c.fairness < best.fairness) { best = c; continue; }
+          if (c.fairness !== best.fairness) continue;
+          if (c.genderDev < best.genderDev) { best = c; continue; }
         }
         return best;
       }
@@ -163,8 +247,8 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
     const playing = indices.filter(i => !sitOuts.has(i));
     sitOuts.forEach(i => sitOutCount[i]++);
 
-    const poolM = shuffle(playing.filter(i => genders[i] === 'M'));
-    const poolF = shuffle(playing.filter(i => genders[i] === 'F'));
+    const poolM = _shuffle(playing.filter(i => genders[i] === 'M'));
+    const poolF = _shuffle(playing.filter(i => genders[i] === 'F'));
 
     // =========================================================
     // PHASE 2: Partnership Formation (Greedy Bipartite Matching)
@@ -178,8 +262,8 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
     const recentPartner = zeroPairMatrix();
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
-        recentCourt[i][j] = prev1Court[i][j] * 3 + prev2Court[i][j];
-        recentPartner[i][j] = prev1Partner[i][j] * 5 + prev2Partner[i][j] * 2;
+        recentCourt[i][j] = prev1Court[i][j] * SCHEDULE_WEIGHTS.PREV1_COURT_DECAY + prev2Court[i][j] * SCHEDULE_WEIGHTS.PREV2_COURT_DECAY;
+        recentPartner[i][j] = prev1Partner[i][j] * SCHEDULE_WEIGHTS.PREV1_PARTNER_DECAY + prev2Partner[i][j] * SCHEDULE_WEIGHTS.PREV2_PARTNER_DECAY;
       }
     }
 
@@ -204,17 +288,17 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
         const stuckFF = unmatchedF.filter(f => prevSameGenderPlayers.has(f));
         const usedForSwap = new Set();
         for (const stuck of stuckFF) {
-          let bestIdx = -1;
+          let swapIdx = -1;
           for (let k = 0; k < mfPairs.length; k++) {
             if (usedForSwap.has(k)) continue;
             const [m, f] = mfPairs[k];
             if (prevSameGenderPlayers.has(f)) continue;
-            if (partnerCount[m][stuck] === 0) { bestIdx = k; break; }
+            if (partnerCount[m][stuck] === 0) { swapIdx = k; break; }
           }
-          if (bestIdx >= 0) {
-            usedForSwap.add(bestIdx);
-            const oldF = mfPairs[bestIdx][1];
-            mfPairs[bestIdx][1] = stuck;
+          if (swapIdx >= 0) {
+            usedForSwap.add(swapIdx);
+            const oldF = mfPairs[swapIdx][1];
+            mfPairs[swapIdx][1] = stuck;
             matchedF.delete(oldF); matchedF.add(stuck);
             unmatchedF = unmatchedF.filter(f => f !== stuck);
             unmatchedF.push(oldF);
@@ -225,17 +309,17 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
         const stuckMM = unmatchedM.filter(m => prevSameGenderPlayers.has(m));
         const usedForSwap = new Set();
         for (const stuck of stuckMM) {
-          let bestIdx = -1;
+          let swapIdx = -1;
           for (let k = 0; k < mfPairs.length; k++) {
             if (usedForSwap.has(k)) continue;
             const [m, f] = mfPairs[k];
             if (prevSameGenderPlayers.has(m)) continue;
-            if (partnerCount[stuck][f] === 0) { bestIdx = k; break; }
+            if (partnerCount[stuck][f] === 0) { swapIdx = k; break; }
           }
-          if (bestIdx >= 0) {
-            usedForSwap.add(bestIdx);
-            const oldM = mfPairs[bestIdx][0];
-            mfPairs[bestIdx][0] = stuck;
+          if (swapIdx >= 0) {
+            usedForSwap.add(swapIdx);
+            const oldM = mfPairs[swapIdx][0];
+            mfPairs[swapIdx][0] = stuck;
             matchedM.delete(oldM); matchedM.add(stuck);
             unmatchedM = unmatchedM.filter(m => m !== stuck);
             unmatchedM.push(oldM);
@@ -246,15 +330,24 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
       // Proactively release MF pairs to same-gender when the unique MF
       // partner pool is running low, preventing forced repeats in later rounds.
       if (mfPairs.length >= 2) {
+        // "Fresh" = never partnered (partnerCount === 0). In long schedules
+        // where zero-repeats is impossible, also consider least-repeated pairs.
+        let globalMinPartnerCount = Infinity;
+        for (const m of poolM) {
+          for (const f of poolF) {
+            if (partnerCount[m][f] < globalMinPartnerCount) globalMinPartnerCount = partnerCount[m][f];
+          }
+        }
+        const freshThreshold = globalMinPartnerCount;
         let minRemainingMF = Infinity;
         for (const m of poolM) {
           let avail = 0;
-          for (const f of poolF) if (partnerCount[m][f] === 0) avail++;
+          for (const f of poolF) if (partnerCount[m][f] <= freshThreshold) avail++;
           if (avail < minRemainingMF) minRemainingMF = avail;
         }
         for (const f of poolF) {
           let avail = 0;
-          for (const m of poolM) if (partnerCount[m][f] === 0) avail++;
+          for (const m of poolM) if (partnerCount[m][f] <= freshThreshold) avail++;
           if (avail < minRemainingMF) minRemainingMF = avail;
         }
         const remainingRounds = numRounds - r;
@@ -269,7 +362,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
           }
           if (releaseCount >= 2) {
             const deficit = remainingRounds - minRemainingMF;
-            const shouldRelease = deficit >= minRemainingMF || Math.random() < deficit / remainingRounds;
+            const shouldRelease = deficit >= minRemainingMF || _rng() < deficit / remainingRounds;
             if (shouldRelease) {
               mfPairs.sort((a, b) => partnerCount[b[0]][b[1]] - partnerCount[a[0]][a[1]]);
               const released = mfPairs.splice(0, releaseCount);
@@ -363,7 +456,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
     }
   }
 
-  return { schedule, partnerCount, opponentCount, courtCount, sitOutCount, playCount };
+  return { schedule, partnerCount, opponentCount, courtCount, sitOutCount, playCount, coByeCount };
 }
 
 // -----------------------------------------------------------------
@@ -378,25 +471,31 @@ function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recen
   function edgeWeight(mi, fj) {
     const m = males[mi], f = females[fj];
     const pw = partnerCount[m][f];
-    const neverOpp = opponentCount[m][f] === 0 ? 1 : 0;
-    const recentSame = recentCourt[m][f] > 0 ? 2 : 0;
-    return pw * 200 + recentSame + neverOpp;
+    const neverOpp = opponentCount[m][f] === 0 ? SCHEDULE_WEIGHTS.NEVER_MET_BONUS_EDGE : 0;
+    const recentSame = recentCourt[m][f] > 0 ? SCHEDULE_WEIGHTS.RECENT_SAME_COURT_EDGE : 0;
+    return pw * SCHEDULE_WEIGHTS.PARTNER_REPEAT_EDGE + recentSame + neverOpp;
   }
 
-  let maxWeight = 0;
-  for (let i = 0; i < nm; i++)
+  // Precompute edge weights once and collect the distinct values in
+  // ascending order. Iterating distinct thresholds is 50-100x faster than
+  // stepping every integer up to maxWeight (which can reach ~600).
+  const weights = Array.from({length: nm}, () => new Array(nf));
+  const distinctSet = new Set();
+  for (let i = 0; i < nm; i++) {
     for (let j = 0; j < nf; j++) {
       const w = edgeWeight(i, j);
-      if (w > maxWeight) maxWeight = w;
+      weights[i][j] = w;
+      distinctSet.add(w);
     }
-  if (maxWeight === 0) maxWeight = 1;
+  }
+  const distinctWeights = [...distinctSet].sort((a, b) => a - b);
 
   const matchM = new Array(nm).fill(-1);
   const matchF = new Array(nf).fill(-1);
 
   function augment(u, visited, maxW) {
     for (let fj = 0; fj < nf; fj++) {
-      if (visited[fj] || edgeWeight(u, fj) > maxW) continue;
+      if (visited[fj] || weights[u][fj] > maxW) continue;
       visited[fj] = true;
       if (matchF[fj] === -1 || augment(matchF[fj], visited, maxW)) {
         matchM[u] = fj;
@@ -407,7 +506,7 @@ function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recen
     return false;
   }
 
-  for (let w = 0; w <= maxWeight; w++) {
+  for (const w of distinctWeights) {
     for (let mi = 0; mi < nm; mi++) {
       if (matchM[mi] !== -1) continue;
       augment(mi, new Array(nf).fill(false), w);
@@ -421,7 +520,7 @@ function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recen
   for (let mi = 0; mi < nm; mi++) {
     if (matchM[mi] !== -1) result.push([males[mi], females[matchM[mi]]]);
   }
-  return shuffle(result);
+  return _shuffle(result);
 }
 
 // -----------------------------------------------------------------
@@ -436,9 +535,9 @@ function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt
   function pairWeight(a, b) {
     const pa = players[a], pb = players[b];
     const pw = partnerCount[pa][pb];
-    const neverOpp = opponentCount[pa][pb] === 0 ? 1 : 0;
-    const recentSame = recentCourt[pa][pb] > 0 ? 2 : 0;
-    return pw * 200 + recentSame + neverOpp;
+    const neverOpp = opponentCount[pa][pb] === 0 ? SCHEDULE_WEIGHTS.NEVER_MET_BONUS_EDGE : 0;
+    const recentSame = recentCourt[pa][pb] > 0 ? SCHEDULE_WEIGHTS.RECENT_SAME_COURT_EDGE : 0;
+    return pw * SCHEDULE_WEIGHTS.PARTNER_REPEAT_EDGE + recentSame + neverOpp;
   }
 
   if (n <= 20) {
@@ -469,14 +568,14 @@ function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt
     }
 
     enumerate(Array.from({length: n}, (_, i) => i), [], 0);
-    if (bestPairs) return shuffle(bestPairs);
+    if (bestPairs) return _shuffle(bestPairs);
   }
 
   // Greedy fallback
   const candidates = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      candidates.push({ a: players[i], b: players[j], weight: pairWeight(i, j), rand: Math.random() });
+      candidates.push({ a: players[i], b: players[j], weight: pairWeight(i, j), rand: _rng() });
     }
   }
   candidates.sort((a, b) => a.weight - b.weight || a.rand - b.rand);
@@ -489,7 +588,7 @@ function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt
     used.add(c.a); used.add(c.b);
     if (result.length === target) break;
   }
-  return shuffle(result);
+  return _shuffle(result);
 }
 
 // -----------------------------------------------------------------
@@ -521,8 +620,8 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
 
       const maleCount = allFour.filter(p => genders[p] === 'M').length;
       let genderViolation = 0;
-      if (maleCount === 1 || maleCount === 3) genderViolation = 1000000;
-      else if (maleCount === 2 && genders[p1[0]] === genders[p1[1]]) genderViolation = 1000000;
+      if (maleCount === 1 || maleCount === 3) genderViolation = SCHEDULE_WEIGHTS.GENDER_VIOLATION;
+      else if (maleCount === 2 && genders[p1[0]] === genders[p1[1]]) genderViolation = SCHEDULE_WEIGHTS.GENDER_VIOLATION;
 
       const [a1, a2] = p1;
       const [b1, b2] = p2;
@@ -538,8 +637,8 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
         }
       }
 
-      const hard = prevViolations * 1000 + genderViolation;
-      const soft = oppScore * 10 - neverMetBonus * 3 + courtScore;
+      const hard = prevViolations * SCHEDULE_WEIGHTS.HARD_MULTIPLIER + genderViolation;
+      const soft = oppScore * SCHEDULE_WEIGHTS.OPPONENT_REPEAT_CUBIC - neverMetBonus * SCHEDULE_WEIGHTS.NEVER_MET_OPPONENT_BONUS + courtScore * SCHEDULE_WEIGHTS.COURT_COOCCURRENCE_SOFT;
       pairScore[i][j] = { hard, soft };
       pairScore[j][i] = pairScore[i][j];
     }
@@ -590,7 +689,7 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
       sorted.push({ i, j, hard: s.hard, soft: s.soft });
     }
   }
-  for (const s of sorted) s.rand = Math.random();
+  for (const s of sorted) s.rand = _rng();
   sorted.sort((a, b) => (a.hard - b.hard) || (a.soft - b.soft) || (a.rand - b.rand));
 
   const used = new Set();
@@ -602,11 +701,8 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
     if (courts.length === numCourts) break;
   }
 
-  // Fill any remaining
-  if (courts.length < numCourts) {
-    const rem = [];
-    for (let i = 0; i < np; i++) if (!used.has(i)) rem.push(partnerships[i]);
-    for (let i = 0; i < rem.length - 1; i += 2) courts.push({ teamA: rem[i], teamB: rem[i+1] });
+  if (courts.length !== numCourts) {
+    throw new Error(`Court grouping invariant violated: produced ${courts.length} of ${numCourts} courts from ${np} partnerships`);
   }
   return courts;
 }
@@ -628,20 +724,27 @@ function scoreSchedule(result, n, genders) {
   // Mid-schedule bye fairness: track worst spread at any point during the schedule
   let maxMidByeSpread = 0;
   const runningByeCount = new Array(n).fill(0);
-
-  // Co-bye diversity: how often the same pair sits out together
-  let maxCoBye = 0;
-  const coByeMatrix = Array.from({length: n}, () => new Array(n).fill(0));
   for (const round of result.schedule) {
-    for (let i = 0; i < round.sitOuts.length; i++)
-      for (let j = i + 1; j < round.sitOuts.length; j++) {
-        coByeMatrix[round.sitOuts[i]][round.sitOuts[j]]++;
-        coByeMatrix[round.sitOuts[j]][round.sitOuts[i]]++;
-      }
     round.sitOuts.forEach(p => runningByeCount[p]++);
     const midSpread = Math.max(...runningByeCount) - Math.min(...runningByeCount);
     if (midSpread > maxMidByeSpread) maxMidByeSpread = midSpread;
   }
+
+  // Co-bye diversity: prefer the pre-computed coByeCount from generateSchedule;
+  // fall back to recomputing it for compatibility (e.g., externally constructed
+  // results). Either way, maxCoBye is the largest cell above the diagonal.
+  let maxCoBye = 0;
+  const coByeMatrix = result.coByeCount || (() => {
+    const m = Array.from({length: n}, () => new Array(n).fill(0));
+    for (const round of result.schedule) {
+      for (let i = 0; i < round.sitOuts.length; i++)
+        for (let j = i + 1; j < round.sitOuts.length; j++) {
+          m[round.sitOuts[i]][round.sitOuts[j]]++;
+          m[round.sitOuts[j]][round.sitOuts[i]]++;
+        }
+    }
+    return m;
+  })();
   for (let i = 0; i < n; i++)
     for (let j = i + 1; j < n; j++)
       if (coByeMatrix[i][j] > maxCoBye) maxCoBye = coByeMatrix[i][j];
@@ -728,9 +831,154 @@ function compareScores(a, b) {
   return a.totalPartnerExcess - b.totalPartnerExcess;
 }
 
-function generateBestSchedule(numPlayers, numCourts, numRounds, genders, preferMixed) {
-  const timeBudgetMs = 10000;
+// -----------------------------------------------------------------
+// Post-processing 2-opt repair phase
+// -----------------------------------------------------------------
+// Given an already-optimized schedule result, try in-round swaps that
+// exchange one player between two courts of the same round and re-pair
+// the four players on each affected court. Accept swaps that strictly
+// improve compareScores. Iterate until no improvement in one pass.
+// -----------------------------------------------------------------
+function rebuildCounts(schedule, n) {
+  const partnerCount = Array.from({length: n}, () => new Array(n).fill(0));
+  const opponentCount = Array.from({length: n}, () => new Array(n).fill(0));
+  const courtCount = Array.from({length: n}, () => new Array(n).fill(0));
+  const sitOutCount = new Array(n).fill(0);
+  const playCount = new Array(n).fill(0);
+  const coByeCount = Array.from({length: n}, () => new Array(n).fill(0));
+  for (const round of schedule) {
+    for (const court of round.courts) {
+      const [a1, a2] = court.teamA;
+      const [b1, b2] = court.teamB;
+      partnerCount[a1][a2]++; partnerCount[a2][a1]++;
+      partnerCount[b1][b2]++; partnerCount[b2][b1]++;
+      opponentCount[a1][b1]++; opponentCount[b1][a1]++;
+      opponentCount[a1][b2]++; opponentCount[b2][a1]++;
+      opponentCount[a2][b1]++; opponentCount[b1][a2]++;
+      opponentCount[a2][b2]++; opponentCount[b2][a2]++;
+      const cp = [a1, a2, b1, b2];
+      for (let x = 0; x < 4; x++) for (let y = x + 1; y < 4; y++) {
+        courtCount[cp[x]][cp[y]]++;
+        courtCount[cp[y]][cp[x]]++;
+      }
+      cp.forEach(i => playCount[i]++);
+    }
+    for (const p of round.sitOuts) sitOutCount[p]++;
+    for (let i = 0; i < round.sitOuts.length; i++)
+      for (let j = i + 1; j < round.sitOuts.length; j++) {
+        coByeCount[round.sitOuts[i]][round.sitOuts[j]]++;
+        coByeCount[round.sitOuts[j]][round.sitOuts[i]]++;
+      }
+  }
+  return { partnerCount, opponentCount, courtCount, sitOutCount, playCount, coByeCount };
+}
+
+function courtsAreValidGender(court, genders) {
+  const all = [...court.teamA, ...court.teamB];
+  const mc = all.filter(p => genders[p] === 'M').length;
+  if (mc === 1 || mc === 3) return false;
+  if (mc === 2 && genders[court.teamA[0]] === genders[court.teamA[1]]) return false;
+  return true;
+}
+
+// Given 4 player ids, yield the 3 distinct 2v2 partitions.
+function partitionsOfFour(four) {
+  const [a, b, c, d] = four;
+  return [
+    { teamA: [a, b], teamB: [c, d] },
+    { teamA: [a, c], teamB: [b, d] },
+    { teamA: [a, d], teamB: [b, c] },
+  ];
+}
+
+function _findOneImprovement(schedule, n, genders, curScore, deadlineMs) {
   const start = Date.now();
+  for (let ri = 0; ri < schedule.length; ri++) {
+    if (Date.now() - start > deadlineMs) return null;
+    const round = schedule[ri];
+    const nc = round.courts.length;
+    for (let ci = 0; ci < nc; ci++) {
+      for (let cj = ci + 1; cj < nc; cj++) {
+        const c1 = round.courts[ci], c2 = round.courts[cj];
+        const c1Players = [...c1.teamA, ...c1.teamB];
+        const c2Players = [...c2.teamA, ...c2.teamB];
+        for (let a = 0; a < 4; a++) {
+          for (let b = 0; b < 4; b++) {
+            const p1 = c1Players[a], p2 = c2Players[b];
+            if (genders[p1] !== genders[p2]) continue;
+            const newC1Four = c1Players.slice(); newC1Four[a] = p2;
+            const newC2Four = c2Players.slice(); newC2Four[b] = p1;
+            const c1Options = partitionsOfFour(newC1Four);
+            const c2Options = partitionsOfFour(newC2Four);
+            for (const nc1 of c1Options) {
+              if (!courtsAreValidGender(nc1, genders)) continue;
+              for (const nc2 of c2Options) {
+                if (!courtsAreValidGender(nc2, genders)) continue;
+                const trialCourts = round.courts.slice();
+                trialCourts[ci] = nc1;
+                trialCourts[cj] = nc2;
+                const trialRound = { round: round.round, sitOuts: round.sitOuts, courts: trialCourts };
+                const trialSchedule = schedule.slice();
+                trialSchedule[ri] = trialRound;
+                const trialCounts = rebuildCounts(trialSchedule, n);
+                const trialResult = { schedule: trialSchedule, ...trialCounts };
+                const trialScore = scoreSchedule(trialResult, n, genders);
+                if (compareScores(trialScore, curScore) < 0) {
+                  return { result: trialResult, score: trialScore };
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function repairSchedule2opt(result, n, genders, options) {
+  const maxPasses = (options && options.maxPasses) || 3;
+  const deadlineMs = (options && options.deadlineMs) || 500;
+  const start = Date.now();
+  let schedule = result.schedule.map(r => ({
+    round: r.round,
+    sitOuts: [...r.sitOuts],
+    courts: r.courts.map(c => ({ teamA: [...c.teamA], teamB: [...c.teamB] })),
+  }));
+  const counts = rebuildCounts(schedule, n);
+  let curResult = { schedule, ...counts };
+  let curScore = scoreSchedule(curResult, n, genders);
+  for (let pass = 0; pass < maxPasses; pass++) {
+    const remaining = deadlineMs - (Date.now() - start);
+    if (remaining <= 0) break;
+    const improvement = _findOneImprovement(curResult.schedule, n, genders, curScore, remaining);
+    if (!improvement) break;
+    curResult = improvement.result;
+    curScore = improvement.score;
+  }
+  return curResult;
+}
+
+// Choose a time budget proportional to problem size. Small problems plateau
+// quickly so a shorter budget avoids wasted work; large problems benefit
+// from more iterations. The bounds keep the UX responsive.
+function adaptiveTimeBudgetMs(numPlayers, numCourts, numRounds) {
+  // Rough estimate: generateSchedule is ~O(R * (N^3 + K^3)) for court grouping
+  // enumeration plus O(N^2) bookkeeping. Scale linearly with R * N * K.
+  const sizeFactor = numRounds * numPlayers * numCourts;
+  // Target ~200 iterations on a typical laptop. For 10r, 20p, 4c this is ~16k,
+  // so a 1ms-per-k-factor coefficient produces the historical ~10s budget.
+  const targetMs = sizeFactor * 0.6;
+  return Math.max(2000, Math.min(15000, Math.round(targetMs)));
+}
+
+function generateBestSchedule(numPlayers, numCourts, numRounds, genders, preferMixed, options) {
+  const timeBudgetMs = (options && options.timeBudgetMs) || adaptiveTimeBudgetMs(numPlayers, numCourts, numRounds);
+  const plateauMs = (options && options.plateauMs) || Math.min(2000, timeBudgetMs / 3);
+  const skipRepair = options && options.skipRepair;
+  const repairMs = (options && options.repairMs) || Math.min(500, timeBudgetMs * 0.05);
+  const start = Date.now();
+  let lastImprovement = start;
   let bestResult = null;
   let bestScore = null;
   let iterations = 0;
@@ -743,21 +991,32 @@ function generateBestSchedule(numPlayers, numCourts, numRounds, genders, preferM
     if (!bestScore || compareScores(score, bestScore) < 0) {
       bestScore = score;
       bestResult = result;
+      lastImprovement = Date.now();
     }
+    // Early exit on plateau: if no improvement for plateauMs and we've done
+    // enough iterations to sample the space meaningfully.
+    if (iterations >= 100 && Date.now() - lastImprovement > plateauMs) break;
   } while (Date.now() - start < timeBudgetMs);
 
+  if (!skipRepair && bestResult) {
+    bestResult = repairSchedule2opt(bestResult, numPlayers, genders, { deadlineMs: repairMs });
+  }
   return bestResult;
 }
 
-function generateBestScheduleAsync(numPlayers, numCourts, numRounds, genders, preferMixed, onProgress, onComplete) {
-  const timeBudgetMs = 10000;
+function generateBestScheduleAsync(numPlayers, numCourts, numRounds, genders, preferMixed, onProgress, onComplete, options) {
+  const timeBudgetMs = (options && options.timeBudgetMs) || adaptiveTimeBudgetMs(numPlayers, numCourts, numRounds);
+  const plateauMs = (options && options.plateauMs) || Math.min(2000, timeBudgetMs / 3);
+  const skipRepair = options && options.skipRepair;
+  const repairMs = (options && options.repairMs) || Math.min(500, timeBudgetMs * 0.05);
   const start = Date.now();
+  let lastImprovement = start;
   let bestResult = null;
   let bestScore = null;
   let iterations = 0;
 
   function runChunk() {
-    const chunkEnd = Math.min(Date.now() + 80, start + timeBudgetMs);
+    const chunkEnd = Math.min(Date.now() + SCHEDULE_WEIGHTS.ASYNC_CHUNK_MS, start + timeBudgetMs);
     while (Date.now() < chunkEnd) {
       const result = generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed);
       const score = scoreSchedule(result, numPlayers, genders);
@@ -765,16 +1024,43 @@ function generateBestScheduleAsync(numPlayers, numCourts, numRounds, genders, pr
       if (!bestScore || compareScores(score, bestScore) < 0) {
         bestScore = score;
         bestResult = result;
+        lastImprovement = Date.now();
       }
     }
-    var elapsed = Date.now() - start;
+    const elapsed = Date.now() - start;
+    const plateaued = iterations >= 100 && Date.now() - lastImprovement > plateauMs;
     if (onProgress) onProgress({ iterations: iterations, pct: Math.min(100, Math.round(elapsed / timeBudgetMs * 100)), score: bestScore });
-    if (elapsed < timeBudgetMs) {
+    if (elapsed < timeBudgetMs && !plateaued) {
       setTimeout(runChunk, 0);
     } else {
-      onComplete(bestResult);
+      // Run the 2-opt repair phase (non-blocking) then complete.
+      if (!skipRepair && bestResult) {
+        setTimeout(() => {
+          bestResult = repairSchedule2opt(bestResult, numPlayers, genders, { deadlineMs: repairMs });
+          onComplete(bestResult);
+        }, 0);
+      } else {
+        onComplete(bestResult);
+      }
     }
   }
 
   setTimeout(runChunk, 0);
+}
+
+// Node/CommonJS export for tests. Guarded so the browser (where `module`
+// is undefined) is unaffected.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    generateSchedule,
+    generateBestSchedule,
+    scoreSchedule,
+    compareScores,
+    repairSchedule2opt,
+    adaptiveTimeBudgetMs,
+    setScheduleRng,
+    resetScheduleRng,
+    mulberry32,
+    SCHEDULE_WEIGHTS,
+  };
 }
