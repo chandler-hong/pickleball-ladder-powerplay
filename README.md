@@ -47,6 +47,7 @@ A multi-start wrapper runs phases 1-3 hundreds of times within an adaptive time 
 | MM vs FF courts | 0 |
 | Bye spread | ≤ 1 (max byes − min byes across players) |
 | Back-to-back byes | 0 |
+| Same-court pair streak | ≤ 2 consecutive rounds (no pair of players is ever on the same court 3 rounds in a row) |
 | Duplicate players on a court | 0 (hard invariant, verified by tests) |
 | Gender balance (3M/1F) | 0 when even male count is achievable |
 

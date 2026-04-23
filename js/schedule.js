@@ -768,7 +768,19 @@ function scoreSchedule(result, n, genders) {
   }
 
   const rounds = result.schedule;
+
+  // Consecutive-round courtmate tracking. `consecCourtmate` counts how
+  // many pairs reappear on the same court in adjacent rounds (whether as
+  // partners or opponents). `maxCourtmateStreak` is the longest streak of
+  // consecutive rounds any single pair spent as courtmates. These catch
+  // the "I keep playing the same person over and over" complaint that
+  // the per-round recentCourt mechanism cannot fully prevent on its own.
+  let consecCourtmate = 0;
+  let maxCourtmateStreak = 0;
+  const _pairStreak = new Map();
+
   for (let ri = 0; ri < rounds.length; ri++) {
+    const hereKeys = new Set();
     for (const court of rounds[ri].courts) {
       const all = [...court.teamA, ...court.teamB];
       const mc = all.filter(p => genders[p] === 'M').length;
@@ -777,6 +789,22 @@ function scoreSchedule(result, n, genders) {
         const teamAGenders = court.teamA.map(p => genders[p]).sort().join('');
         if (teamAGenders === 'FF' || teamAGenders === 'MM') genderBadCourts++;
       }
+      for (let x = 0; x < 4; x++) {
+        for (let y = x + 1; y < 4; y++) {
+          const lo = all[x] < all[y] ? all[x] : all[y];
+          const hi = all[x] < all[y] ? all[y] : all[x];
+          hereKeys.add(lo + ',' + hi);
+        }
+      }
+    }
+    for (const k of hereKeys) {
+      const v = (_pairStreak.get(k) || 0) + 1;
+      _pairStreak.set(k, v);
+      if (v >= 2) consecCourtmate++;
+      if (v > maxCourtmateStreak) maxCourtmateStreak = v;
+    }
+    for (const k of [..._pairStreak.keys()]) {
+      if (!hereKeys.has(k)) _pairStreak.delete(k);
     }
 
     // Count role flips: partner↔opponent transitions within 2 rounds.
@@ -807,13 +835,22 @@ function scoreSchedule(result, n, genders) {
     }
   }
 
-  return { genderBadCourts, byeSpread, maxMidByeSpread, maxCoBye, partnerToOpp, maxOpp, neverMet, totalOppExcess, maxPartner, totalPartnerExcess, maxCourt, totalCourtExcess };
+  return { genderBadCourts, byeSpread, maxMidByeSpread, maxCoBye, partnerToOpp, maxOpp, neverMet, totalOppExcess, maxPartner, totalPartnerExcess, maxCourt, totalCourtExcess, consecCourtmate, maxCourtmateStreak };
 }
 
 function compareScores(a, b) {
   if (a.genderBadCourts !== b.genderBadCourts) return a.genderBadCourts - b.genderBadCourts;
   // Zero partner repeats is the top priority after gender
   if (a.maxPartner !== b.maxPartner) return a.maxPartner - b.maxPartner;
+  // No player should share a court with the same person in consecutive rounds
+  // (catches the "same opponent 3 games in a row" failure mode that the
+  // per-round recentCourt soft penalty can still slip past).
+  const aMaxStreak = a.maxCourtmateStreak || 0;
+  const bMaxStreak = b.maxCourtmateStreak || 0;
+  if (aMaxStreak !== bMaxStreak) return aMaxStreak - bMaxStreak;
+  const aConsec = a.consecCourtmate || 0;
+  const bConsec = b.consecCourtmate || 0;
+  if (aConsec !== bConsec) return aConsec - bConsec;
   // Fair bye distribution: final spread, mid-schedule spread, and diverse bye groups
   if (a.byeSpread !== b.byeSpread) return a.byeSpread - b.byeSpread;
   if (a.maxMidByeSpread !== b.maxMidByeSpread) return a.maxMidByeSpread - b.maxMidByeSpread;
