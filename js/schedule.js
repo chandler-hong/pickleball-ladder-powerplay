@@ -43,18 +43,28 @@ const SCHEDULE_WEIGHTS = Object.freeze({
   // any combination of other considerations, hence the large multiplier.
   PARTNER_REPEAT_EDGE: 200,
   // Small penalties that act as tiebreakers inside a given partner-repeat bucket.
-  RECENT_SAME_COURT_EDGE: 2,
+  // RECENT_SAME_COURT_EDGE discourages pairing two players in Phase 2 when they
+  // shared a court recently (reduces back-to-back courtmate pairs).
+  RECENT_SAME_COURT_EDGE: 5,
   NEVER_MET_BONUS_EDGE: 1,
 
   // Court grouping (Phase 3)
   HARD_MULTIPLIER: 1000,          // scales recent-courtmate + recent-partner violations
-  GENDER_VIOLATION: 1_000_000,    // MM vs FF, 3M/1F, 1M/3F -> must outrank everything else
+  // Gender violation must dominate *any* achievable sum of recent-court
+  // violations across all courts in a round, even with the stronger
+  // PREV1_COURT_DECAY below. Conservative ceiling: 1e9 >> 4 courts * 6 pairs
+  // * PREV1_COURT_DECAY(10) * HARD_MULTIPLIER(1000) = 240k.
+  GENDER_VIOLATION: 1_000_000_000,
   OPPONENT_REPEAT_CUBIC: 10,      // soft penalty per (opponentCount)^3
   NEVER_MET_OPPONENT_BONUS: 3,    // discount per never-met opponent pair
   COURT_COOCCURRENCE_SOFT: 1,     // coefficient on courtCount term
 
   // Role-flip decay (recent-history weights)
-  PREV1_COURT_DECAY: 3,
+  // PREV1_COURT_DECAY bumped from 3 → 10 so that the court-grouping phase
+  // prefers layouts that spread out same-court pair reunions (a pair forced
+  // to meet twice should do so with a gap, not back-to-back). See
+  // RECENT_SAME_COURT_EDGE above for the Phase 2 counterpart.
+  PREV1_COURT_DECAY: 10,
   PREV2_COURT_DECAY: 1,
   PREV1_PARTNER_DECAY: 5,
   PREV2_PARTNER_DECAY: 2,
