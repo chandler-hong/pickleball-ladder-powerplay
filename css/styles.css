@@ -771,3 +771,76 @@
     opacity: 0.6;
     letter-spacing: 0.03em;
   }
+
+  .ladder-assignments {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
+  .ladder-assignment-court {
+    background: #1a1d24;
+    border: 1px solid #252830;
+    border-radius: 12px;
+    padding: 0.7rem 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-height: 1px;
+  }
+  .ladder-assignment-head {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #9ca3af;
+    text-align: center;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid #252830;
+    margin-bottom: 0.2rem;
+  }
+  .ladder-chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    padding: 0.4rem 0.55rem;
+    background: #1e2028;
+    border: 1px solid #2a2d37;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    cursor: grab;
+    user-select: none;
+    transition: all 0.15s ease;
+  }
+  .ladder-chip:hover { border-color: #383c48; background: #22252e; }
+  .ladder-chip:active { cursor: grabbing; }
+  .ladder-chip.dragging { opacity: 0.4; }
+  .ladder-chip.drag-over {
+    border-color: #818cf8;
+    box-shadow: 0 0 0 2px rgba(129,140,248,0.25);
+    background: #232636;
+  }
+  .ladder-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .ladder-chip-gender {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.1rem 0.35rem;
+    border-radius: 5px;
+    flex-shrink: 0;
+  }
+  .ladder-chip-gender.g-m {
+    background: rgba(129,140,248,0.15);
+    color: #a5b4fc;
+  }
+  .ladder-chip-gender.g-f {
+    background: rgba(244,114,182,0.15);
+    color: #f9a8d4;
+  }
+  .ladder-setup-locked .ladder-chip { cursor: not-allowed; opacity: 0.6; }
+  .ladder-setup-locked .ladder-chip:hover { border-color: #2a2d37; background: #1e2028; }
