@@ -60,6 +60,7 @@ function buildPlayerGrid(count, skipSave) {
         const hint = this.parentElement.querySelector('.gender-hint');
         if (hint) hint.remove();
       }
+      updatePlayerGenderCount();
       // Live-update schedule if one exists (substitution: only current + future rounds)
       if (scheduleNames && idx < scheduleNames.length) {
         const newName = this.value || `Player ${idx + 1}`;
@@ -109,11 +110,39 @@ function buildPlayerGrid(count, skipSave) {
       if (hint) hint.remove();
       saveState();
       checkGenderWarning();
+      updatePlayerGenderCount();
     };
     document.getElementById(`g${i}m`).addEventListener('change', dismissHint);
     document.getElementById(`g${i}f`).addEventListener('change', dismissHint);
   }
   currentPlayerCount = count;
+  updatePlayerGenderCount();
+}
+
+// Counts only rows where a name has been entered. Defaults are M, so we
+// don't want to count empty rows or the indicator would always show
+// "20M / 0F" on a fresh form.
+function updatePlayerGenderCount() {
+  const target = document.getElementById('playerGenderCount');
+  if (!target) return;
+  let m = 0, f = 0;
+  for (let i = 0; i < currentPlayerCount; i++) {
+    const nameEl = document.getElementById(`p${i}`);
+    if (!nameEl || !nameEl.value.trim()) continue;
+    const gf = document.getElementById(`g${i}f`);
+    if (gf && gf.checked) f++; else m++;
+  }
+  const filled = m + f;
+  if (filled === 0) { target.style.display = 'none'; return; }
+  target.style.display = '';
+  const progress = filled < currentPlayerCount
+    ? `<span class="pgc-progress">(${filled} of ${currentPlayerCount})</span>`
+    : '';
+  target.innerHTML =
+    `<span class="pgc-m">${m}M</span>` +
+    `<span class="pgc-sep">·</span>` +
+    `<span class="pgc-f">${f}F</span>` +
+    progress;
 }
 
 function buildCourtInputs(count, skipSave) {
@@ -209,6 +238,7 @@ function fillDefaults() {
   }
   saveState();
   checkGenderWarning();
+  updatePlayerGenderCount();
 }
 
 function newTournament() {

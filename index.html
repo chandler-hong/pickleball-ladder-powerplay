@@ -10,7 +10,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script>const APP_VERSION = "2.5.0";</script>
+<script>const APP_VERSION = "2.6.1";</script>
 <script>document.write('<link rel="stylesheet" href="css/styles.css?v=' + APP_VERSION + '">');</script>
 </head>
 <body>
@@ -64,7 +64,10 @@
   </div>
 
   <div class="card">
-    <div class="card-title">Players</div>
+    <div class="card-title player-card-title">
+      <span>Players</span>
+      <span class="player-gender-count" id="playerGenderCount" style="display:none;"></span>
+    </div>
     <div class="player-grid" id="playerGrid"></div>
   </div>
 
@@ -117,7 +120,8 @@
         <span>Court Assignments</span>
         <button class="btn-swap" id="ladderReshuffleBtn" type="button">Re-shuffle</button>
       </div>
-      <p style="font-size:0.78rem; color:#7c8091; margin: -0.5rem 0 1rem 0;">Drag players between courts to set initial positions, or click Re-shuffle for a new random gender-balanced layout. When everything looks right, click <strong>Start Ladder</strong> below to begin.</p>
+      <p style="font-size:0.78rem; color:#7c8091; margin: -0.5rem 0 1rem 0;">Drag players between courts (desktop) or tap two players to swap them (mobile). Or click Re-shuffle for a new random gender-balanced layout. When everything looks right, click <strong>Start Ladder</strong> below to begin.</p>
+      <div class="ladder-assignment-hint">Tap a player to select, then tap another to swap them.</div>
       <div id="ladderResizeBanner" style="display:none; font-size:0.78rem; color:#fbbf24; margin-bottom:0.75rem;">Re-shuffled because court count changed.</div>
       <div id="ladderCourtAssignments" class="ladder-assignments"></div>
     </div>

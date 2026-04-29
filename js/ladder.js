@@ -163,7 +163,26 @@ function applyLadderSetupLock() {
     container.querySelectorAll('.ladder-chip').forEach(chip => {
       chip.draggable = !locked;
     });
+    if (locked) clearLadderChipSelection();
   }
+}
+
+let _selectedChipKey = null;
+function clearLadderChipSelection() {
+  _selectedChipKey = null;
+  document.querySelectorAll('.ladder-chip.ladder-chip-selected')
+    .forEach(el => el.classList.remove('ladder-chip-selected'));
+}
+function swapLadderAssignmentSlots(srcCourt, srcSlot, dstCourt, dstSlot) {
+  if (srcCourt === dstCourt && srcSlot === dstSlot) return;
+  const a = ladderConfig.manualAssignment[srcCourt][srcSlot];
+  const b = ladderConfig.manualAssignment[dstCourt][dstSlot];
+  ladderConfig.manualAssignment[srcCourt][srcSlot] = b;
+  ladderConfig.manualAssignment[dstCourt][dstSlot] = a;
+  const banner = document.getElementById('ladderResizeBanner');
+  if (banner) banner.style.display = 'none';
+  buildLadderCourtAssignments();
+  saveLadderState();
 }
 
 let ladderPlayerData = [];
@@ -335,11 +354,16 @@ function buildLadderCourtAssignments() {
       chip.appendChild(label);
       chip.appendChild(badge);
 
+      const chipKey = `${idx}:${s}`;
+      if (chipKey === _selectedChipKey) chip.classList.add('ladder-chip-selected');
+
       chip.addEventListener('dragstart', function(e) {
+        if (ladderState) { e.preventDefault(); return; }
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain',
           `${this.dataset.courtIdx}:${this.dataset.slotIdx}`);
         this.classList.add('dragging');
+        clearLadderChipSelection();
       });
       chip.addEventListener('dragend', function() {
         this.classList.remove('dragging');
@@ -362,14 +386,29 @@ function buildLadderCourtAssignments() {
         const [srcCourt, srcSlot] = data.split(':').map(Number);
         const dstCourt = parseInt(this.dataset.courtIdx);
         const dstSlot = parseInt(this.dataset.slotIdx);
-        if (srcCourt === dstCourt && srcSlot === dstSlot) return;
-        const a = ladderConfig.manualAssignment[srcCourt][srcSlot];
-        const b = ladderConfig.manualAssignment[dstCourt][dstSlot];
-        ladderConfig.manualAssignment[srcCourt][srcSlot] = b;
-        ladderConfig.manualAssignment[dstCourt][dstSlot] = a;
-        document.getElementById('ladderResizeBanner').style.display = 'none';
-        buildLadderCourtAssignments();
-        saveLadderState();
+        swapLadderAssignmentSlots(srcCourt, srcSlot, dstCourt, dstSlot);
+      });
+
+      // Tap-to-swap: works on both mouse and touch (HTML5 drag-and-drop
+      // does not fire on most mobile browsers, so this is the primary
+      // interaction on touch devices).
+      chip.addEventListener('click', function(e) {
+        if (ladderState) return;
+        const myKey = `${this.dataset.courtIdx}:${this.dataset.slotIdx}`;
+        if (_selectedChipKey === null) {
+          _selectedChipKey = myKey;
+          this.classList.add('ladder-chip-selected');
+          return;
+        }
+        if (_selectedChipKey === myKey) {
+          clearLadderChipSelection();
+          return;
+        }
+        const [srcCourt, srcSlot] = _selectedChipKey.split(':').map(Number);
+        const dstCourt = parseInt(this.dataset.courtIdx);
+        const dstSlot = parseInt(this.dataset.slotIdx);
+        clearLadderChipSelection();
+        swapLadderAssignmentSlots(srcCourt, srcSlot, dstCourt, dstSlot);
       });
 
       col.appendChild(chip);

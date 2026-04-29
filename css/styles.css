@@ -34,6 +34,36 @@
     font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em;
     text-transform: uppercase; color: #7c8091; margin-bottom: 1.25rem;
   }
+  .player-card-title {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.6rem; flex-wrap: wrap;
+  }
+  .player-gender-count {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em;
+    text-transform: none; color: #7c8091;
+  }
+  .player-gender-count .pgc-m {
+    color: #a5b4fc;
+    background: rgba(129,140,248,0.10);
+    border: 1px solid rgba(129,140,248,0.18);
+    border-radius: 5px;
+    padding: 0.12rem 0.45rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .player-gender-count .pgc-f {
+    color: #f9a8d4;
+    background: rgba(244,114,182,0.10);
+    border: 1px solid rgba(244,114,182,0.18);
+    border-radius: 5px;
+    padding: 0.12rem 0.45rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .player-gender-count .pgc-sep { color: #3a3e4a; }
+  .player-gender-count .pgc-progress {
+    color: #4a4e5c; font-weight: 500; letter-spacing: 0.04em;
+    margin-left: 0.15rem;
+  }
 
   /* Player Grid */
   .player-grid {
@@ -635,10 +665,32 @@
       padding: 0.5rem 0.75rem; font-size: 0.9rem;
     }
     .ladder-score-input { min-height: 44px; width: 100%; font-size: 1rem; padding: 0.6rem; }
-    .btn-swap { font-size: 0.75rem; padding: 0.4rem 0.75rem; min-height: 36px; }
+    .btn-swap {
+      font-size: 0.78rem; padding: 0.55rem 0.75rem;
+      min-height: 40px; width: 100%;
+      display: flex; align-items: center; justify-content: center;
+      flex-basis: 100%; order: 99;
+    }
     .btn-early { width: 100%; min-height: 44px; font-size: 0.82rem; padding: 0.55rem 1rem;
       display: flex; align-items: center; justify-content: center; }
-    .ladder-court > div:first-child { flex-wrap: wrap; gap: 0.4rem; }
+    .ladder-court > div:first-child { flex-wrap: wrap; gap: 0.5rem; row-gap: 0.6rem; }
+    .ladder-assignments { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+    .ladder-assignment-court { padding: 0.6rem 0.5rem; gap: 0.4rem; }
+    .ladder-assignment-head {
+      font-size: 0.65rem; padding-bottom: 0.35rem; margin-bottom: 0.15rem;
+    }
+    .ladder-chip {
+      padding: 0.55rem 0.55rem;
+      font-size: 0.82rem;
+      min-height: 40px;
+      gap: 0.35rem;
+    }
+    .ladder-chip-name { font-size: 0.85rem; }
+    .ladder-chip-gender { font-size: 0.6rem; padding: 0.12rem 0.4rem; }
+    .ladder-assignment-hint { display: block; }
+    .ladder-chip.ladder-chip-selected {
+      box-shadow: 0 0 0 2px rgba(167,139,250,0.55);
+    }
     .court-label { font-size: 0.8rem; }
     .ladder-score-error { font-size: 0.7rem; }
     #ladderCurrentRound .schedule-header h2 { font-size: 1.1rem; }
@@ -777,6 +829,17 @@
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 0.75rem;
   }
+  .ladder-assignment-hint {
+    display: none;
+    font-size: 0.72rem;
+    color: #a5b4fc;
+    background: rgba(129,140,248,0.08);
+    border: 1px solid rgba(129,140,248,0.18);
+    border-radius: 8px;
+    padding: 0.5rem 0.7rem;
+    margin-bottom: 0.6rem;
+    line-height: 1.4;
+  }
   .ladder-assignment-court {
     background: #1a1d24;
     border: 1px solid #252830;
@@ -820,6 +883,12 @@
     box-shadow: 0 0 0 2px rgba(129,140,248,0.25);
     background: #232636;
   }
+  .ladder-chip.ladder-chip-selected {
+    border-color: #a78bfa;
+    background: #2a2444;
+    box-shadow: 0 0 0 2px rgba(167,139,250,0.45);
+  }
+  .ladder-chip.ladder-chip-selected .ladder-chip-name { color: #ddd6fe; }
   .ladder-chip-name {
     overflow: hidden;
     text-overflow: ellipsis;
