@@ -377,8 +377,12 @@ function ladderReset() {
   clearLadderState();
   ladderState = null;
   ladderPlayerData = [];
+  ladderConfig.manualAssignment = null;
   document.getElementById('ladderOutput').style.display = 'none';
   buildLadderPlayerGrid();
+  buildLadderCourtInputs();
+  buildLadderCourtAssignments();
+  updateLadderSetupMessage();
   applyLadderSetupLock();
 }
 
@@ -991,6 +995,13 @@ function saveLadderPlayerData() {
 function saveLadderState() {
   const state = {
     ladderPlayerData,
+    ladderConfig: {
+      numCourts: ladderConfig.numCourts,
+      courtNumbers: [...ladderConfig.courtNumbers],
+      manualAssignment: ladderConfig.manualAssignment
+        ? ladderConfig.manualAssignment.map(arr => [...arr])
+        : null,
+    },
     preferMixed: true,
     ladderState: ladderState ? { ...ladderState } : null,
     mode: document.getElementById('modeLadder').checked ? 'ladder' : 'rr',
@@ -1004,11 +1015,26 @@ function restoreLadderState() {
   if (!state) return;
 
   ladderPlayerData = state.ladderPlayerData || [];
+  if (state.ladderConfig
+      && typeof state.ladderConfig.numCourts === 'number'
+      && Array.isArray(state.ladderConfig.courtNumbers)
+      && state.ladderConfig.numCourts >= 1
+      && state.ladderConfig.numCourts <= 10
+      && state.ladderConfig.courtNumbers.length === state.ladderConfig.numCourts) {
+    ladderConfig = {
+      numCourts: state.ladderConfig.numCourts,
+      courtNumbers: [...state.ladderConfig.courtNumbers],
+      manualAssignment: Array.isArray(state.ladderConfig.manualAssignment)
+        ? state.ladderConfig.manualAssignment.map(arr => [...arr])
+        : null,
+    };
+  }
   if (state.ladderState) ladderState = state.ladderState;
 
   if (state.mode === 'ladder') {
     document.getElementById('modeLadder').checked = true;
     setMode('ladder');
+    document.getElementById('ladderNumCourts').value = ladderConfig.numCourts;
     buildLadderPlayerGrid();
     buildLadderCourtInputs();
     buildLadderCourtAssignments();
@@ -1019,8 +1045,8 @@ function restoreLadderState() {
       renderLadderLeaderboard();
       renderLadderHistory();
     }
-    applyLadderSetupLock();
   }
+  applyLadderSetupLock();
 }
 
 function clearLadderState() {
