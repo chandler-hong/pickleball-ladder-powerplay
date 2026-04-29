@@ -280,6 +280,44 @@ function buildLadderCourtAssignments() {
 
       chip.appendChild(label);
       chip.appendChild(badge);
+
+      chip.addEventListener('dragstart', function(e) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain',
+          `${this.dataset.courtIdx}:${this.dataset.slotIdx}`);
+        this.classList.add('dragging');
+      });
+      chip.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        document.querySelectorAll('.ladder-chip.drag-over')
+          .forEach(el => el.classList.remove('drag-over'));
+      });
+      chip.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        this.classList.add('drag-over');
+      });
+      chip.addEventListener('dragleave', function() {
+        this.classList.remove('drag-over');
+      });
+      chip.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('drag-over');
+        const data = e.dataTransfer.getData('text/plain');
+        if (!data) return;
+        const [srcCourt, srcSlot] = data.split(':').map(Number);
+        const dstCourt = parseInt(this.dataset.courtIdx);
+        const dstSlot = parseInt(this.dataset.slotIdx);
+        if (srcCourt === dstCourt && srcSlot === dstSlot) return;
+        const a = ladderConfig.manualAssignment[srcCourt][srcSlot];
+        const b = ladderConfig.manualAssignment[dstCourt][dstSlot];
+        ladderConfig.manualAssignment[srcCourt][srcSlot] = b;
+        ladderConfig.manualAssignment[dstCourt][dstSlot] = a;
+        document.getElementById('ladderResizeBanner').style.display = 'none';
+        buildLadderCourtAssignments();
+        saveLadderState();
+      });
+
       col.appendChild(chip);
     }
     container.appendChild(col);
