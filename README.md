@@ -18,7 +18,9 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 - **PDF and CSV export** — print-friendly layout and downloadable results
 
 ### Traditional Ladder Mode
-- 20 players across 5 courts with winners moving up and losers moving down
+- **Configurable layout** — pick 1–10 courts (4 players per court) and customize each court number
+- **Manual or random initial assignment** — drag players between courts to set starting positions, or click Re-shuffle for a gender-balanced random layout
+- Winners move up, losers move down each round
 - Score validation for standard pickleball scoring
 - Full round history and leaderboard
 
