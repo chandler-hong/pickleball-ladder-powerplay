@@ -369,6 +369,11 @@ function ladderFillDefaults() {
     document.getElementById(`lp${i}`).value = picks[i].name;
     document.getElementById(`lg${i}${picks[i].gender.toLowerCase()}`).checked = true;
   }
+  ladderConfig.manualAssignment =
+    randomGenderBalancedAssignment(getLadderGenders(), ladderConfig.numCourts);
+  const banner = document.getElementById('ladderResizeBanner');
+  if (banner) banner.style.display = 'none';
+  buildLadderCourtAssignments();
   saveLadderPlayerData();
 }
 
