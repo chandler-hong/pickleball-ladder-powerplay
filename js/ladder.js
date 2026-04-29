@@ -733,6 +733,24 @@ function expireLadderTimer() {
   saveLadderState();
 }
 
+function resumeLadderTimerOnRestore() {
+  if (!ladderState || !ladderState.roundTimer) return;
+  const t = ladderState.roundTimer;
+  if (t.expired) return;
+  if (t.pausedRemaining !== null) return;
+  if (t.startedAt !== null) {
+    const remaining = t.durationSec - (Date.now() - t.startedAt) / 1000;
+    if (remaining <= 0) {
+      t.expired = true;
+      t.startedAt = null;
+      t.pausedRemaining = null;
+      saveLadderState();
+      return;
+    }
+    startLadderTimerInterval();
+  }
+}
+
 function renderLadderRoundTimer() {
   const container = document.getElementById('ladderRoundTimer');
   if (!container || !ladderState || !ladderState.roundTimer) {
@@ -1244,6 +1262,7 @@ function restoreLadderState() {
       renderLadderCurrentRound();
       renderLadderLeaderboard();
       renderLadderHistory();
+      resumeLadderTimerOnRestore();
     }
   }
   applyLadderSetupLock();
