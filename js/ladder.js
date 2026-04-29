@@ -259,9 +259,9 @@ function buildLadderCourtAssignments() {
   ensureLadderAssignment();
 
   container.innerHTML = '';
-  const courtsHighToLow = [...ladderConfig.courtNumbers]
+  const courtsHighToLow = ladderConfig.courtNumbers
     .map((num, idx) => ({ num, idx }))
-    .sort((a, b) => b.num - a.num);
+    .reverse();
 
   const names = getLadderNames();
   const genders = getLadderGenders();
