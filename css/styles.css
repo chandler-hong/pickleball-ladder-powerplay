@@ -883,3 +883,117 @@
     opacity: 1 !important;
     filter: none !important;
   }
+
+  /* --- Ladder round timer widget --- */
+  .current-round-banner .current-round-timer-slot {
+    margin-left: auto;
+    display: flex;
+  }
+  .round-timer {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-family: 'Inter', sans-serif;
+  }
+  .round-timer-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #7c8091;
+  }
+  .round-timer-input {
+    width: 56px;
+    padding: 0.35rem 0.4rem;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid #2a2d37;
+    background: #1e2028;
+    color: #e4e7ec;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    outline: none;
+    -moz-appearance: textfield;
+    transition: all 0.15s ease;
+  }
+  .round-timer-input::-webkit-outer-spin-button,
+  .round-timer-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .round-timer-input:hover { border-color: #383c48; }
+  .round-timer-input:focus {
+    border-color: #818cf8;
+    box-shadow: 0 0 0 3px rgba(129,140,248,0.1);
+  }
+  .round-timer-input.input-error {
+    border-color: #f87171;
+    box-shadow: 0 0 0 3px rgba(248,113,113,0.18);
+  }
+  .round-timer-unit {
+    font-size: 0.72rem;
+    color: #7c8091;
+    margin-left: -0.2rem;
+  }
+  .round-timer-display {
+    font-family: 'Inter', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #a5b4fc;
+    min-width: 4ch;
+    text-align: center;
+  }
+  .round-timer-paused .round-timer-display { color: #9ca3af; }
+  .round-timer-tag {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9ca3af;
+    background: #1e2028;
+    border: 1px solid #2a2d37;
+    border-radius: 6px;
+    padding: 0.1rem 0.4rem;
+  }
+  .btn-timer {
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.32rem 0.7rem;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+  }
+  .btn-timer-start, .btn-timer-resume {
+    background: rgba(129,140,248,0.12);
+    color: #a5b4fc;
+    border-color: rgba(129,140,248,0.18);
+  }
+  .btn-timer-start:hover, .btn-timer-resume:hover {
+    background: rgba(129,140,248,0.2);
+    color: #c7d2fe;
+  }
+  .btn-timer-pause {
+    background: rgba(253,224,71,0.1);
+    color: #fde68a;
+    border-color: rgba(253,224,71,0.18);
+  }
+  .btn-timer-pause:hover { background: rgba(253,224,71,0.16); }
+  .btn-timer-reset {
+    background: rgba(248,113,113,0.08);
+    color: #fca5a5;
+    border-color: rgba(248,113,113,0.15);
+  }
+  .btn-timer-reset:hover { background: rgba(248,113,113,0.14); }
+
+  .round-timer-expired .round-timer-display {
+    color: #fca5a5;
+    animation: pulse-timer-expired 1.4s ease-in-out infinite;
+  }
+  .round-timer-expired .round-timer-label { color: #fca5a5; }
+  @keyframes pulse-timer-expired {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.55; transform: scale(1.05); }
+  }
