@@ -92,6 +92,7 @@ function setLadderNumCourts(n) {
   ladderConfig.manualAssignment = null;
 
   buildLadderPlayerGrid();
+  buildLadderCourtInputs();
   updateLadderSetupMessage();
   saveLadderState();
   return true;
@@ -111,6 +112,40 @@ function updateLadderSetupMessage() {
 
 let ladderPlayerData = [];
 let ladderState = null;
+
+// --- Ladder court inputs ---
+function buildLadderCourtInputs() {
+  const container = document.getElementById('ladderCourtInputs');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const courtsHighToLow = [...ladderConfig.courtNumbers].reverse();
+  for (let i = 0; i < ladderConfig.numCourts; i++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'court-num-group';
+    const label = document.createElement('span');
+    label.textContent = i === 0 ? 'Top' : (i === ladderConfig.numCourts - 1 ? 'Bottom' : `#${i + 1}`);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'court-num-input';
+    input.id = `ladderCourt${i}`;
+    input.min = 1; input.max = 99;
+    input.value = courtsHighToLow[i];
+    input.addEventListener('input', function() {
+      this.classList.remove('input-error');
+      const v = parseInt(this.value);
+      if (!isNaN(v) && v >= 1 && v <= 99) {
+        const idx = ladderConfig.numCourts - 1 - i;
+        ladderConfig.courtNumbers[idx] = v;
+        updateLadderSetupMessage();
+        saveLadderState();
+      }
+    });
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    container.appendChild(wrap);
+  }
+}
 
 // --- Ladder player grid ---
 function buildLadderPlayerGrid() {
@@ -346,6 +381,30 @@ function ladderValidate() {
     }
     seen[lower] = i;
   }
+
+  const courtVals = [];
+  for (let i = 0; i < ladderConfig.numCourts; i++) {
+    const el = document.getElementById(`ladderCourt${i}`);
+    if (!el) continue;
+    const v = parseInt(el.value);
+    if (!el.value.trim() || isNaN(v) || v < 1 || v > 99) {
+      el.classList.add('input-error');
+      errors.push(`Court ${i + 1} must be a number between 1 and 99`);
+    }
+    courtVals.push(el.value.trim());
+  }
+  for (let i = 0; i < courtVals.length; i++) {
+    for (let j = i + 1; j < courtVals.length; j++) {
+      if (courtVals[i] && courtVals[j] && courtVals[i] === courtVals[j]) {
+        const a = document.getElementById(`ladderCourt${i}`);
+        const b = document.getElementById(`ladderCourt${j}`);
+        if (a) a.classList.add('input-error');
+        if (b) b.classList.add('input-error');
+        errors.push(`Duplicate court number: ${courtVals[i]}`);
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -804,6 +863,7 @@ function restoreLadderState() {
     document.getElementById('modeLadder').checked = true;
     setMode('ladder');
     buildLadderPlayerGrid();
+    buildLadderCourtInputs();
     updateLadderSetupMessage();
     if (ladderState) {
       document.getElementById('ladderOutput').style.display = 'block';
