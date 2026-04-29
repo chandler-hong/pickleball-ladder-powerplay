@@ -273,8 +273,8 @@ function buildLadderCourtAssignments() {
 
     const head = document.createElement('div');
     head.className = 'ladder-assignment-head';
-    const isTop = num === Math.max(...ladderConfig.courtNumbers);
-    const isBottom = num === Math.min(...ladderConfig.courtNumbers);
+    const isTop = idx === ladderConfig.numCourts - 1;
+    const isBottom = idx === 0;
     const tag = isTop ? ' (Top)' : isBottom ? ' (Bottom)' : '';
     head.textContent = `Court ${num}${tag}`;
     col.appendChild(head);
