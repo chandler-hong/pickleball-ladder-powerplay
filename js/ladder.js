@@ -66,6 +66,33 @@ function newRoundTimerState(lastDurationSec) {
   };
 }
 
+function formatTimerMMSS(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, '0')}`;
+}
+
+function getLadderTimerState() {
+  if (!ladderState || !ladderState.roundTimer) return 'idle';
+  const t = ladderState.roundTimer;
+  if (t.expired) return 'expired';
+  if (t.pausedRemaining !== null) return 'paused';
+  if (t.startedAt !== null) return 'running';
+  return 'idle';
+}
+
+function getLadderTimerRemainingSec() {
+  if (!ladderState || !ladderState.roundTimer) return 0;
+  const t = ladderState.roundTimer;
+  if (t.expired) return 0;
+  if (t.pausedRemaining !== null) return t.pausedRemaining;
+  if (t.startedAt !== null) {
+    return Math.max(0, t.durationSec - (Date.now() - t.startedAt) / 1000);
+  }
+  return t.durationSec;
+}
+
 function setLadderNumCourts(n) {
   if (n < 1 || n > 10 || isNaN(n)) return false;
   const oldN = ladderConfig.numCourts;
@@ -608,6 +635,43 @@ function ladderStart() {
 }
 
 // --- Ladder rendering ---
+function renderLadderRoundTimer() {
+  const container = document.getElementById('ladderRoundTimer');
+  if (!container || !ladderState || !ladderState.roundTimer) {
+    if (container) container.innerHTML = '';
+    return;
+  }
+  const t = ladderState.roundTimer;
+  const state = getLadderTimerState();
+  const remaining = getLadderTimerRemainingSec();
+  const lastMin = Math.max(1, Math.round(t.lastDurationSec / 60));
+
+  let html = `<div class="round-timer round-timer-${state}">`;
+
+  if (state === 'idle') {
+    html += `
+      <span class="round-timer-label">Round Timer</span>
+      <input type="number" class="round-timer-input" id="roundTimerMinutes"
+             min="1" max="60" value="${lastMin}">
+      <span class="round-timer-unit">min</span>
+      <button class="btn-timer btn-timer-start" id="roundTimerStartBtn" type="button">Start</button>`;
+  } else {
+    const display = formatTimerMMSS(remaining);
+    html += `<span class="round-timer-label">Round Timer</span>
+      <span class="round-timer-display" id="roundTimerDisplay">${display}</span>`;
+    if (state === 'paused') html += `<span class="round-timer-tag">paused</span>`;
+    if (state === 'running') {
+      html += `<button class="btn-timer btn-timer-pause" id="roundTimerPauseBtn" type="button">Pause</button>`;
+    } else if (state === 'paused') {
+      html += `<button class="btn-timer btn-timer-resume" id="roundTimerResumeBtn" type="button">Resume</button>`;
+    }
+    html += `<button class="btn-timer btn-timer-reset" id="roundTimerResetBtn" type="button">Reset</button>`;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
 function renderLadderCurrentRound() {
   const container = document.getElementById('ladderCurrentRound');
   if (!ladderState) { container.innerHTML = ''; return; }
@@ -620,6 +684,7 @@ function renderLadderCurrentRound() {
     <div class="current-round-banner">
       <span class="current-round-dot"></span>
       <span class="current-round-text">Enter scores and click <span>"Complete Round"</span></span>
+      <span class="current-round-timer-slot" id="ladderRoundTimer"></span>
     </div>
     <div class="ladder-courts">`;
 
@@ -667,6 +732,7 @@ function renderLadderCurrentRound() {
     document.getElementById(`ls${court}b`).addEventListener('input', handler);
   }
 
+  renderLadderRoundTimer();
 }
 
 function isValidPickleballResult(scoreA, scoreB) {
