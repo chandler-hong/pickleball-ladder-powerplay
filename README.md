@@ -20,6 +20,8 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 ### Traditional Ladder Mode
 - **Configurable layout** — pick 1–10 courts (4 players per court) and customize each court number
 - **Manual or random initial assignment** — drag players between courts to set starting positions, or click Re-shuffle for a gender-balanced random layout
+- **Per-round countdown timer** — set the round length (default 10 min), Pause / Resume / Reset; survives page refresh; goes red and pulses when time's up
+- **Per-court Done badge** — at-a-glance status of which courts have finished while the round is in progress
 - Winners move up, losers move down each round
 - Score validation for standard pickleball scoring
 - Full round history and leaderboard
