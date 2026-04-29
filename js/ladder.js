@@ -28,7 +28,7 @@ function ladderExportCSV() {
   // Round history
   if (ladderState && ladderState.rounds.length > 0) {
     csv += '\nROUND HISTORY\n';
-    const courtsHighToLow = [...LADDER_COURTS].reverse();
+    const courtsHighToLow = [...getLadderCourts()].reverse();
     for (const round of ladderState.rounds) {
       const rNames = round.names || ladderState.names;
       csv += `\nRound ${round.round}\n`;
@@ -46,8 +46,15 @@ function ladderExportCSV() {
   downloadCSV(`ladder-results-${fileDate()}.csv`, csv);
 }
 const LADDER_STORAGE_KEY = 'powerplay_pickleball_ladder_state';
-const LADDER_COURTS = [2, 3, 7, 8, 9]; // lowest to highest
-const LADDER_PLAYER_COUNT = 20;
+
+let ladderConfig = {
+  numCourts: 5,
+  courtNumbers: [2, 3, 7, 8, 9],
+  manualAssignment: null,
+};
+
+function getLadderCourts() { return ladderConfig.courtNumbers; }
+function getLadderPlayerCount() { return ladderConfig.numCourts * 4; }
 
 let ladderPlayerData = [];
 let ladderState = null;
@@ -56,7 +63,7 @@ let ladderState = null;
 function buildLadderPlayerGrid() {
   const grid = document.getElementById('ladderPlayerGrid');
   grid.innerHTML = '';
-  for (let i = 0; i < LADDER_PLAYER_COUNT; i++) {
+  for (let i = 0; i < getLadderPlayerCount(); i++) {
     const div = document.createElement('div');
     div.className = 'player-input';
     div.innerHTML =
@@ -113,7 +120,7 @@ function buildLadderPlayerGrid() {
 
 function getLadderNames() {
   const names = [];
-  for (let i = 0; i < LADDER_PLAYER_COUNT; i++) {
+  for (let i = 0; i < getLadderPlayerCount(); i++) {
     const v = document.getElementById(`lp${i}`);
     names.push(v && v.value.trim() ? v.value.trim() : `Player ${i + 1}`);
   }
@@ -122,7 +129,7 @@ function getLadderNames() {
 
 function getLadderGenders() {
   const genders = [];
-  for (let i = 0; i < LADDER_PLAYER_COUNT; i++) {
+  for (let i = 0; i < getLadderPlayerCount(); i++) {
     const el = document.getElementById(`lg${i}f`);
     genders.push(el && el.checked ? 'F' : 'M');
   }
@@ -130,8 +137,8 @@ function getLadderGenders() {
 }
 
 function ladderFillDefaults() {
-  const picks = pickRandomNames(LADDER_PLAYER_COUNT);
-  for (let i = 0; i < LADDER_PLAYER_COUNT; i++) {
+  const picks = pickRandomNames(getLadderPlayerCount());
+  for (let i = 0; i < getLadderPlayerCount(); i++) {
     document.getElementById(`lp${i}`).value = picks[i].name;
     document.getElementById(`lg${i}${picks[i].gender.toLowerCase()}`).checked = true;
   }
@@ -179,26 +186,26 @@ function bestPairing(fourPlayers, genders, preferMixed, partnerHistory) {
 }
 
 function newPartnerHistory() {
-  return Array.from({length: LADDER_PLAYER_COUNT}, () => new Array(LADDER_PLAYER_COUNT).fill(0));
+  return Array.from({length: getLadderPlayerCount()}, () => new Array(getLadderPlayerCount()).fill(0));
 }
 
 function ladderInitialAllocation(genders, preferMixed, partnerHistory) {
   // Distribute genders evenly across courts so mixed doubles is possible
-  const allIndices = Array.from({length: LADDER_PLAYER_COUNT}, (_, i) => i);
+  const allIndices = Array.from({length: getLadderPlayerCount()}, (_, i) => i);
   const males = shuffle(allIndices.filter(i => genders[i] === 'M'));
   const females = shuffle(allIndices.filter(i => genders[i] === 'F'));
 
   const courtPlayers = {};
-  LADDER_COURTS.forEach(c => { courtPlayers[c] = []; });
+  getLadderCourts().forEach(c => { courtPlayers[c] = []; });
 
   // Give each court up to 2F + 2M for optimal mixed doubles
   let mi = 0, fi = 0;
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     for (let k = 0; k < 2 && fi < females.length; k++) courtPlayers[court].push(females[fi++]);
     for (let k = 0; k < 2 && mi < males.length; k++) courtPlayers[court].push(males[mi++]);
   }
   // Fill remaining spots if genders are uneven
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     while (courtPlayers[court].length < 4) {
       if (mi < males.length) courtPlayers[court].push(males[mi++]);
       else if (fi < females.length) courtPlayers[court].push(females[fi++]);
@@ -206,7 +213,7 @@ function ladderInitialAllocation(genders, preferMixed, partnerHistory) {
   }
 
   const courtTeams = {};
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     courtTeams[court] = bestPairing(courtPlayers[court], genders, preferMixed, partnerHistory);
   }
   return { courtPlayers, courtTeams };
@@ -214,7 +221,7 @@ function ladderInitialAllocation(genders, preferMixed, partnerHistory) {
 
 function ladderProcessMovement(scores, courtTeams, genders, preferMixed, partnerHistory) {
   const courtResults = {};
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     const teams = courtTeams[court];
     if (scores[court].scoreA > scores[court].scoreB) {
       courtResults[court] = { winners: teams.teamA, losers: teams.teamB };
@@ -224,7 +231,7 @@ function ladderProcessMovement(scores, courtTeams, genders, preferMixed, partner
   }
 
   // Record this round's partnerships in the history matrix
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     const t = courtTeams[court];
     partnerHistory[t.teamA[0]][t.teamA[1]]++;
     partnerHistory[t.teamA[1]][t.teamA[0]]++;
@@ -234,22 +241,22 @@ function ladderProcessMovement(scores, courtTeams, genders, preferMixed, partner
 
   // Movement: winners UP, losers DOWN
   const newCourtPlayers = {};
-  LADDER_COURTS.forEach(c => { newCourtPlayers[c] = []; });
+  getLadderCourts().forEach(c => { newCourtPlayers[c] = []; });
   const movements = {};
 
-  for (let ci = 0; ci < LADDER_COURTS.length; ci++) {
-    const court = LADDER_COURTS[ci];
+  for (let ci = 0; ci < getLadderCourts().length; ci++) {
+    const court = getLadderCourts()[ci];
     const { winners, losers } = courtResults[court];
 
-    if (ci < LADDER_COURTS.length - 1) {
-      const dest = LADDER_COURTS[ci + 1];
+    if (ci < getLadderCourts().length - 1) {
+      const dest = getLadderCourts()[ci + 1];
       winners.forEach(p => { newCourtPlayers[dest].push(p); movements[p] = { from: court, to: dest, dir: 'up' }; });
     } else {
       winners.forEach(p => { newCourtPlayers[court].push(p); movements[p] = { from: court, to: court, dir: 'stay' }; });
     }
 
     if (ci > 0) {
-      const dest = LADDER_COURTS[ci - 1];
+      const dest = getLadderCourts()[ci - 1];
       losers.forEach(p => { newCourtPlayers[dest].push(p); movements[p] = { from: court, to: dest, dir: 'down' }; });
     } else {
       losers.forEach(p => { newCourtPlayers[court].push(p); movements[p] = { from: court, to: court, dir: 'stay' }; });
@@ -258,7 +265,7 @@ function ladderProcessMovement(scores, courtTeams, genders, preferMixed, partner
 
   // Re-pair at each court using full partnership history
   const newTeams = {};
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     newTeams[court] = bestPairing(newCourtPlayers[court], genders, preferMixed, partnerHistory);
   }
 
@@ -270,13 +277,13 @@ function ladderValidate() {
   const names = getLadderNames();
   const errors = [];
   let emptyCount = 0;
-  for (let i = 0; i < LADDER_PLAYER_COUNT; i++) {
+  for (let i = 0; i < getLadderPlayerCount(); i++) {
     if (!document.getElementById(`lp${i}`).value.trim()) emptyCount++;
   }
   if (emptyCount > 0) errors.push(`${emptyCount} player name${emptyCount > 1 ? 's are' : ' is'} empty`);
 
   const seen = {};
-  for (let i = 0; i < LADDER_PLAYER_COUNT; i++) {
+  for (let i = 0; i < getLadderPlayerCount(); i++) {
     const lower = names[i].toLowerCase();
     if (seen[lower] !== undefined) {
       errors.push(`"${esc(names[i])}" appears more than once — add a last name initial`);
@@ -313,8 +320,8 @@ function ladderStart() {
     courtTeams,
     partnerHistory,
     rounds: [],
-    playerWins: new Array(LADDER_PLAYER_COUNT).fill(0),
-    playerLosses: new Array(LADDER_PLAYER_COUNT).fill(0),
+    playerWins: new Array(getLadderPlayerCount()).fill(0),
+    playerLosses: new Array(getLadderPlayerCount()).fill(0),
   };
 
   document.getElementById('ladderOutput').style.display = 'block';
@@ -331,7 +338,7 @@ function renderLadderCurrentRound() {
   if (!ladderState) { container.innerHTML = ''; return; }
 
   const { round, courtTeams, names } = ladderState;
-  const courtsHighToLow = [...LADDER_COURTS].reverse();
+  const courtsHighToLow = [...getLadderCourts()].reverse();
 
   let html = `<div class="card">
     <div class="schedule-header"><h2>Round ${round}</h2></div>
@@ -343,11 +350,11 @@ function renderLadderCurrentRound() {
 
   for (const court of courtsHighToLow) {
     const teams = courtTeams[court];
-    const label = court === LADDER_COURTS[LADDER_COURTS.length - 1] ? `Court ${court} (Top)`
-                : court === LADDER_COURTS[0] ? `Court ${court} (Bottom)`
+    const label = court === getLadderCourts()[getLadderCourts().length - 1] ? `Court ${court} (Top)`
+                : court === getLadderCourts()[0] ? `Court ${court} (Bottom)`
                 : `Court ${court}`;
-    const cls = court === LADDER_COURTS[LADDER_COURTS.length - 1] ? 'ladder-court court-highest'
-              : court === LADDER_COURTS[0] ? 'ladder-court court-lowest'
+    const cls = court === getLadderCourts()[getLadderCourts().length - 1] ? 'ladder-court court-highest'
+              : court === getLadderCourts()[0] ? 'ladder-court court-lowest'
               : 'ladder-court';
 
     html += `<div class="${cls}" id="lc${court}">
@@ -379,7 +386,7 @@ function renderLadderCurrentRound() {
   container.innerHTML = html;
 
   // Wire up live score checking on each court
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     const handler = () => checkLadderCourtScore(court);
     document.getElementById(`ls${court}a`).addEventListener('input', handler);
     document.getElementById(`ls${court}b`).addEventListener('input', handler);
@@ -495,7 +502,7 @@ function ladderCompleteRound() {
   const scores = {};
   let valid = true;
 
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     const saEl = document.getElementById(`ls${court}a`);
     const sbEl = document.getElementById(`ls${court}b`);
     const sa = parseInt(saEl.value);
@@ -538,7 +545,7 @@ function ladderCompleteRound() {
 
   // Record round (snapshot names for substitution support)
   const roundRecord = { round: ladderState.round, names: [...ladderState.names], courts: {} };
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     const t = ladderState.courtTeams[court];
     roundRecord.courts[court] = {
       teamA: t.teamA, teamB: t.teamB,
@@ -548,7 +555,7 @@ function ladderCompleteRound() {
   }
 
   // Update stats
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     courtResults[court].winners.forEach(p => ladderState.playerWins[p]++);
     courtResults[court].losers.forEach(p => ladderState.playerLosses[p]++);
   }
@@ -580,7 +587,7 @@ function renderLadderLeaderboard() {
 
   for (const round of ladderState.rounds) {
     const rNames = round.names || ladderState.names;
-    for (const court of LADDER_COURTS) {
+    for (const court of getLadderCourts()) {
       const c = round.courts[court];
       const winTeam = c.winner === 'A' ? c.teamA : c.teamB;
       const loseTeam = c.winner === 'A' ? c.teamB : c.teamA;
@@ -607,7 +614,7 @@ function renderLadderLeaderboard() {
 
   // Determine current court from live state
   const currentCourt = {};
-  for (const court of LADDER_COURTS) {
+  for (const court of getLadderCourts()) {
     if (ladderState.courtPlayers[court]) {
       ladderState.courtPlayers[court].forEach(p => { currentCourt[p] = court; });
     }
@@ -680,7 +687,7 @@ function renderLadderHistory() {
   const section = document.getElementById('ladderHistorySection');
   if (!ladderState || ladderState.rounds.length === 0) { section.innerHTML = ''; return; }
 
-  const courtsHighToLow = [...LADDER_COURTS].reverse();
+  const courtsHighToLow = [...getLadderCourts()].reverse();
 
   let html = '<div class="card"><h2 style="font-size:1.25rem;font-weight:700;color:#e2e8f0;margin-bottom:1.25rem;">Round History</h2>';
 
@@ -711,7 +718,7 @@ function renderLadderHistory() {
 // --- Ladder persistence ---
 function saveLadderPlayerData() {
   ladderPlayerData = [];
-  for (let i = 0; i < LADDER_PLAYER_COUNT; i++) {
+  for (let i = 0; i < getLadderPlayerCount(); i++) {
     const el = document.getElementById(`lp${i}`);
     const gf = document.getElementById(`lg${i}f`);
     if (el) ladderPlayerData.push({ name: el.value, gender: gf && gf.checked ? 'F' : 'M' });
