@@ -280,32 +280,37 @@ function newPartnerHistory() {
   return Array.from({length: getLadderPlayerCount()}, () => new Array(getLadderPlayerCount()).fill(0));
 }
 
-function ladderInitialAllocation(genders, preferMixed, partnerHistory) {
-  // Distribute genders evenly across courts so mixed doubles is possible
-  const allIndices = Array.from({length: getLadderPlayerCount()}, (_, i) => i);
+function randomGenderBalancedAssignment(genders, numCourts) {
+  const totalSlots = numCourts * 4;
+  const allIndices = Array.from({ length: totalSlots }, (_, i) => i);
   const males = shuffle(allIndices.filter(i => genders[i] === 'M'));
   const females = shuffle(allIndices.filter(i => genders[i] === 'F'));
 
-  const courtPlayers = {};
-  getLadderCourts().forEach(c => { courtPlayers[c] = []; });
+  const courts = [];
+  for (let c = 0; c < numCourts; c++) courts.push([]);
 
-  // Give each court up to 2F + 2M for optimal mixed doubles
   let mi = 0, fi = 0;
-  for (const court of getLadderCourts()) {
-    for (let k = 0; k < 2 && fi < females.length; k++) courtPlayers[court].push(females[fi++]);
-    for (let k = 0; k < 2 && mi < males.length; k++) courtPlayers[court].push(males[mi++]);
+  for (let c = 0; c < numCourts; c++) {
+    for (let k = 0; k < 2 && fi < females.length; k++) courts[c].push(females[fi++]);
+    for (let k = 0; k < 2 && mi < males.length; k++) courts[c].push(males[mi++]);
   }
-  // Fill remaining spots if genders are uneven
-  for (const court of getLadderCourts()) {
-    while (courtPlayers[court].length < 4) {
-      if (mi < males.length) courtPlayers[court].push(males[mi++]);
-      else if (fi < females.length) courtPlayers[court].push(females[fi++]);
+  for (let c = 0; c < numCourts; c++) {
+    while (courts[c].length < 4) {
+      if (mi < males.length) courts[c].push(males[mi++]);
+      else if (fi < females.length) courts[c].push(females[fi++]);
+      else break;
     }
   }
+  return courts; // index 0 = lowest court, last = highest
+}
 
+function pairTeamsForAssignment(courtSlots, courtNumbers, genders, preferMixed, partnerHistory) {
+  const courtPlayers = {};
   const courtTeams = {};
-  for (const court of getLadderCourts()) {
-    courtTeams[court] = bestPairing(courtPlayers[court], genders, preferMixed, partnerHistory);
+  for (let c = 0; c < courtNumbers.length; c++) {
+    const court = courtNumbers[c];
+    courtPlayers[court] = courtSlots[c];
+    courtTeams[court] = bestPairing(courtSlots[c], genders, preferMixed, partnerHistory);
   }
   return { courtPlayers, courtTeams };
 }
@@ -424,7 +429,11 @@ function ladderStart() {
   const genders = getLadderGenders();
   const preferMixed = true;
   const partnerHistory = newPartnerHistory();
-  const { courtPlayers, courtTeams } = ladderInitialAllocation(genders, preferMixed, partnerHistory);
+  const courtSlots = ladderConfig.manualAssignment
+    ? ladderConfig.manualAssignment.map(arr => [...arr])
+    : randomGenderBalancedAssignment(genders, ladderConfig.numCourts);
+  const { courtPlayers, courtTeams } =
+    pairTeamsForAssignment(courtSlots, ladderConfig.courtNumbers, genders, preferMixed, partnerHistory);
 
   ladderState = {
     round: 1,
