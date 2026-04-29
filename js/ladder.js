@@ -833,6 +833,7 @@ function renderLadderCurrentRound() {
     html += `<div class="${cls}" id="lc${court}">
       <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem;">
         <div class="court-label" style="margin-bottom:0;">${label}</div>
+        <span class="court-done-badge">\u2713 Done</span>
         <button class="btn-swap" onclick="ladderSwapPartners(${court})">Mix Partners (if necessary)</button>
       </div>
       <div class="ladder-matchup">
