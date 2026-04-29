@@ -56,6 +56,16 @@ let ladderConfig = {
 function getLadderCourts() { return ladderConfig.courtNumbers; }
 function getLadderPlayerCount() { return ladderConfig.numCourts * 4; }
 
+function newRoundTimerState(lastDurationSec) {
+  return {
+    durationSec: lastDurationSec,
+    startedAt: null,
+    pausedRemaining: null,
+    expired: false,
+    lastDurationSec,
+  };
+}
+
 function setLadderNumCourts(n) {
   if (n < 1 || n > 10 || isNaN(n)) return false;
   const oldN = ladderConfig.numCourts;
@@ -585,6 +595,7 @@ function ladderStart() {
     rounds: [],
     playerWins: new Array(getLadderPlayerCount()).fill(0),
     playerLosses: new Array(getLadderPlayerCount()).fill(0),
+    roundTimer: newRoundTimerState(600),
   };
 
   document.getElementById('ladderOutput').style.display = 'block';
@@ -829,6 +840,9 @@ function ladderCompleteRound() {
   ladderState.courtPlayers = newCourtPlayers;
   ladderState.courtTeams = newTeams;
 
+  const lastDuration = (ladderState.roundTimer && ladderState.roundTimer.lastDurationSec) || 600;
+  ladderState.roundTimer = newRoundTimerState(lastDuration);
+
   renderLadderCurrentRound();
   renderLadderLeaderboard();
   renderLadderHistory();
@@ -1028,7 +1042,12 @@ function restoreLadderState() {
       manualAssignment: Array.isArray(ma) ? ma.map(arr => [...arr]) : null,
     };
   }
-  if (state.ladderState) ladderState = state.ladderState;
+  if (state.ladderState) {
+    ladderState = state.ladderState;
+    if (!ladderState.roundTimer) {
+      ladderState.roundTimer = newRoundTimerState(600);
+    }
+  }
 
   if (state.mode === 'ladder') {
     document.getElementById('modeLadder').checked = true;
