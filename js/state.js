@@ -80,6 +80,7 @@ document.getElementById('modeLadder').addEventListener('change', () => {
   setMode('ladder');
   if (!document.getElementById('ladderPlayerGrid').children.length) buildLadderPlayerGrid();
   buildLadderCourtInputs();
+  buildLadderCourtAssignments();
   updateLadderSetupMessage();
 });
 

@@ -114,6 +114,15 @@
       <div class="player-grid" id="ladderPlayerGrid"></div>
     </div>
     <div class="card">
+      <div class="card-title" style="display:flex; align-items:center; gap:0.75rem;">
+        <span>Court Assignments</span>
+        <button class="btn-swap" id="ladderReshuffleBtn" type="button">Re-shuffle</button>
+      </div>
+      <p style="font-size:0.78rem; color:#7c8091; margin: -0.5rem 0 1rem 0;">Drag players between courts to set initial positions, or click Re-shuffle for a new random gender-balanced layout.</p>
+      <div id="ladderResizeBanner" style="display:none; font-size:0.78rem; color:#fbbf24; margin-bottom:0.75rem;">Re-shuffled because court count changed.</div>
+      <div id="ladderCourtAssignments" class="ladder-assignments"></div>
+    </div>
+    <div class="card">
       <div class="controls" style="margin-top:0;">
         <div class="spacer"></div>
         <button class="btn btn-danger" onclick="ladderReset()">Reset Ladder</button>

@@ -93,6 +93,9 @@ function setLadderNumCourts(n) {
 
   buildLadderPlayerGrid();
   buildLadderCourtInputs();
+  buildLadderCourtAssignments();
+  const banner = document.getElementById('ladderResizeBanner');
+  if (banner) banner.style.display = '';
   updateLadderSetupMessage();
   saveLadderState();
   return true;
@@ -138,6 +141,7 @@ function buildLadderCourtInputs() {
         const idx = ladderConfig.numCourts - 1 - i;
         ladderConfig.courtNumbers[idx] = v;
         updateLadderSetupMessage();
+        buildLadderCourtAssignments();
         saveLadderState();
       }
     });
@@ -202,10 +206,83 @@ function buildLadderPlayerGrid() {
           renderLadderLeaderboard();
         }, 180);
       }
+      debounce('ladderAssignChips', () => buildLadderCourtAssignments(), 80);
       saveLadderPlayerData();
     });
-    document.getElementById(`lg${i}m`).addEventListener('change', () => saveLadderPlayerData());
-    document.getElementById(`lg${i}f`).addEventListener('change', () => saveLadderPlayerData());
+    document.getElementById(`lg${i}m`).addEventListener('change', () => {
+      saveLadderPlayerData();
+      buildLadderCourtAssignments();
+    });
+    document.getElementById(`lg${i}f`).addEventListener('change', () => {
+      saveLadderPlayerData();
+      buildLadderCourtAssignments();
+    });
+  }
+}
+
+function ensureLadderAssignment() {
+  const expectedSlots = getLadderPlayerCount();
+  const cfg = ladderConfig.manualAssignment;
+  const isValid = Array.isArray(cfg)
+    && cfg.length === ladderConfig.numCourts
+    && cfg.every(c => Array.isArray(c) && c.length === 4)
+    && cfg.flat().slice().sort((a, b) => a - b).every((v, i) => v === i)
+    && cfg.flat().length === expectedSlots;
+  if (!isValid) {
+    ladderConfig.manualAssignment =
+      randomGenderBalancedAssignment(getLadderGenders(), ladderConfig.numCourts);
+  }
+}
+
+function buildLadderCourtAssignments() {
+  const container = document.getElementById('ladderCourtAssignments');
+  if (!container) return;
+  ensureLadderAssignment();
+
+  container.innerHTML = '';
+  const courtsHighToLow = [...ladderConfig.courtNumbers]
+    .map((num, idx) => ({ num, idx }))
+    .sort((a, b) => b.num - a.num);
+
+  const names = getLadderNames();
+  const genders = getLadderGenders();
+
+  for (const { num, idx } of courtsHighToLow) {
+    const col = document.createElement('div');
+    col.className = 'ladder-assignment-court';
+    col.dataset.courtIdx = String(idx);
+
+    const head = document.createElement('div');
+    head.className = 'ladder-assignment-head';
+    const isTop = num === Math.max(...ladderConfig.courtNumbers);
+    const isBottom = num === Math.min(...ladderConfig.courtNumbers);
+    const tag = isTop ? ' (Top)' : isBottom ? ' (Bottom)' : '';
+    head.textContent = `Court ${num}${tag}`;
+    col.appendChild(head);
+
+    const slots = ladderConfig.manualAssignment[idx];
+    for (let s = 0; s < 4; s++) {
+      const pIdx = slots[s];
+      const chip = document.createElement('div');
+      chip.className = 'ladder-chip';
+      chip.dataset.playerIdx = String(pIdx);
+      chip.dataset.courtIdx = String(idx);
+      chip.dataset.slotIdx = String(s);
+      chip.draggable = true;
+
+      const label = document.createElement('span');
+      label.className = 'ladder-chip-name';
+      label.textContent = names[pIdx] || `Player ${pIdx + 1}`;
+
+      const badge = document.createElement('span');
+      badge.className = 'ladder-chip-gender ' + (genders[pIdx] === 'F' ? 'g-f' : 'g-m');
+      badge.textContent = genders[pIdx] === 'F' ? 'F' : 'M';
+
+      chip.appendChild(label);
+      chip.appendChild(badge);
+      col.appendChild(chip);
+    }
+    container.appendChild(col);
   }
 }
 
@@ -873,6 +950,7 @@ function restoreLadderState() {
     setMode('ladder');
     buildLadderPlayerGrid();
     buildLadderCourtInputs();
+    buildLadderCourtAssignments();
     updateLadderSetupMessage();
     if (ladderState) {
       document.getElementById('ladderOutput').style.display = 'block';
@@ -894,6 +972,17 @@ function clearLadderState() {
       this.classList.remove('input-error');
       const v = parseInt(this.value);
       if (!isNaN(v) && v >= 1 && v <= 10) setLadderNumCourts(v);
+    });
+  }
+
+  const reshuffleBtn = document.getElementById('ladderReshuffleBtn');
+  if (reshuffleBtn) {
+    reshuffleBtn.addEventListener('click', function() {
+      ladderConfig.manualAssignment =
+        randomGenderBalancedAssignment(getLadderGenders(), ladderConfig.numCourts);
+      document.getElementById('ladderResizeBanner').style.display = 'none';
+      buildLadderCourtAssignments();
+      saveLadderState();
     });
   }
 })();
