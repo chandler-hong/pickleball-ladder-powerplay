@@ -113,6 +113,25 @@ function updateLadderSetupMessage() {
   }
 }
 
+function applyLadderSetupLock() {
+  const locked = !!ladderState;
+  const numCourtsEl = document.getElementById('ladderNumCourts');
+  if (numCourtsEl) numCourtsEl.disabled = locked;
+  for (let i = 0; i < ladderConfig.numCourts; i++) {
+    const el = document.getElementById(`ladderCourt${i}`);
+    if (el) el.disabled = locked;
+  }
+  const reshuffleBtn = document.getElementById('ladderReshuffleBtn');
+  if (reshuffleBtn) reshuffleBtn.disabled = locked;
+  const container = document.getElementById('ladderCourtAssignments');
+  if (container) {
+    container.classList.toggle('ladder-setup-locked', locked);
+    container.querySelectorAll('.ladder-chip').forEach(chip => {
+      chip.draggable = !locked;
+    });
+  }
+}
+
 let ladderPlayerData = [];
 let ladderState = null;
 
@@ -322,6 +341,8 @@ function buildLadderCourtAssignments() {
     }
     container.appendChild(col);
   }
+
+  applyLadderSetupLock();
 }
 
 function getLadderNames() {
@@ -358,6 +379,7 @@ function ladderReset() {
   ladderPlayerData = [];
   document.getElementById('ladderOutput').style.display = 'none';
   buildLadderPlayerGrid();
+  applyLadderSetupLock();
 }
 
 // --- Core ladder algorithms ---
@@ -568,6 +590,7 @@ function ladderStart() {
   renderLadderLeaderboard();
   renderLadderHistory();
   saveLadderState();
+  applyLadderSetupLock();
   document.getElementById('ladderCurrentRound').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -996,6 +1019,7 @@ function restoreLadderState() {
       renderLadderLeaderboard();
       renderLadderHistory();
     }
+    applyLadderSetupLock();
   }
 }
 
