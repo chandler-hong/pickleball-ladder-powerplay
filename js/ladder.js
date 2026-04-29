@@ -745,6 +745,7 @@ function resumeLadderTimerOnRestore() {
       t.startedAt = null;
       t.pausedRemaining = null;
       saveLadderState();
+      renderLadderRoundTimer();
       return;
     }
     startLadderTimerInterval();
