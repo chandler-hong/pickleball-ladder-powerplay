@@ -104,13 +104,6 @@ function setLadderNumCourts(n) {
 function updateLadderSetupMessage() {
   const display = document.getElementById('ladderNumPlayersDisplay');
   if (display) display.textContent = `${getLadderPlayerCount()} players`;
-
-  const msg = document.getElementById('ladderSetupMessage');
-  if (msg) {
-    const courts = getLadderCourts().join(', ');
-    msg.textContent =
-      `${getLadderPlayerCount()} players on courts ${courts} \u2014 winners move up, losers move down.`;
-  }
 }
 
 function applyLadderSetupLock() {
