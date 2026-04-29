@@ -164,6 +164,7 @@ function applyLadderSetupLock() {
 
 let ladderPlayerData = [];
 let ladderState = null;
+let ladderTimerInterval = null;
 
 // --- Ladder court inputs ---
 function buildLadderCourtInputs() {
@@ -409,6 +410,7 @@ function ladderFillDefaults() {
 
 function ladderReset() {
   if (!confirm('Reset the ladder? All results will be cleared.')) return;
+  stopLadderTimerInterval();
   clearLadderState();
   ladderState = null;
   ladderPlayerData = [];
@@ -635,6 +637,102 @@ function ladderStart() {
 }
 
 // --- Ladder rendering ---
+function stopLadderTimerInterval() {
+  if (ladderTimerInterval !== null) {
+    clearInterval(ladderTimerInterval);
+    ladderTimerInterval = null;
+  }
+}
+
+function startLadderTimerInterval() {
+  stopLadderTimerInterval();
+  ladderTimerInterval = setInterval(tickLadderTimer, 500);
+}
+
+function tickLadderTimer() {
+  if (!ladderState || !ladderState.roundTimer) {
+    stopLadderTimerInterval();
+    return;
+  }
+  const t = ladderState.roundTimer;
+  if (t.startedAt === null) {
+    stopLadderTimerInterval();
+    return;
+  }
+  const remaining = t.durationSec - (Date.now() - t.startedAt) / 1000;
+  const display = document.getElementById('roundTimerDisplay');
+  if (display) display.textContent = formatTimerMMSS(remaining);
+  if (remaining <= 0) {
+    expireLadderTimer();
+  }
+}
+
+function startLadderTimer() {
+  if (!ladderState || !ladderState.roundTimer) return;
+  const input = document.getElementById('roundTimerMinutes');
+  const minutes = parseInt(input && input.value);
+  if (isNaN(minutes) || minutes < 1 || minutes > 60) {
+    if (input) {
+      input.classList.add('input-error');
+      setTimeout(() => input.classList.remove('input-error'), 1200);
+    }
+    return;
+  }
+  const seconds = minutes * 60;
+  ladderState.roundTimer.durationSec = seconds;
+  ladderState.roundTimer.lastDurationSec = seconds;
+  ladderState.roundTimer.startedAt = Date.now();
+  ladderState.roundTimer.pausedRemaining = null;
+  ladderState.roundTimer.expired = false;
+  renderLadderRoundTimer();
+  startLadderTimerInterval();
+  saveLadderState();
+}
+
+function pauseLadderTimer() {
+  if (!ladderState || !ladderState.roundTimer) return;
+  const t = ladderState.roundTimer;
+  if (t.startedAt === null) return;
+  const remaining = Math.max(0, t.durationSec - (Date.now() - t.startedAt) / 1000);
+  t.pausedRemaining = remaining;
+  t.startedAt = null;
+  stopLadderTimerInterval();
+  renderLadderRoundTimer();
+  saveLadderState();
+}
+
+function resumeLadderTimer() {
+  if (!ladderState || !ladderState.roundTimer) return;
+  const t = ladderState.roundTimer;
+  if (t.pausedRemaining === null) return;
+  t.durationSec = t.pausedRemaining;
+  t.startedAt = Date.now();
+  t.pausedRemaining = null;
+  renderLadderRoundTimer();
+  startLadderTimerInterval();
+  saveLadderState();
+}
+
+function resetLadderTimer() {
+  if (!ladderState || !ladderState.roundTimer) return;
+  stopLadderTimerInterval();
+  const last = ladderState.roundTimer.lastDurationSec || 600;
+  ladderState.roundTimer = newRoundTimerState(last);
+  renderLadderRoundTimer();
+  saveLadderState();
+}
+
+function expireLadderTimer() {
+  if (!ladderState || !ladderState.roundTimer) return;
+  const t = ladderState.roundTimer;
+  t.expired = true;
+  t.startedAt = null;
+  t.pausedRemaining = null;
+  stopLadderTimerInterval();
+  renderLadderRoundTimer();
+  saveLadderState();
+}
+
 function renderLadderRoundTimer() {
   const container = document.getElementById('ladderRoundTimer');
   if (!container || !ladderState || !ladderState.roundTimer) {
@@ -670,6 +768,23 @@ function renderLadderRoundTimer() {
 
   html += `</div>`;
   container.innerHTML = html;
+
+  const startBtn = document.getElementById('roundTimerStartBtn');
+  if (startBtn) startBtn.addEventListener('click', startLadderTimer);
+  const pauseBtn = document.getElementById('roundTimerPauseBtn');
+  if (pauseBtn) pauseBtn.addEventListener('click', pauseLadderTimer);
+  const resumeBtn = document.getElementById('roundTimerResumeBtn');
+  if (resumeBtn) resumeBtn.addEventListener('click', resumeLadderTimer);
+  const resetBtn = document.getElementById('roundTimerResetBtn');
+  if (resetBtn) resetBtn.addEventListener('click', resetLadderTimer);
+
+  const minutesInput = document.getElementById('roundTimerMinutes');
+  if (minutesInput) {
+    minutesInput.addEventListener('input', function() { this.classList.remove('input-error'); });
+    minutesInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); startLadderTimer(); }
+    });
+  }
 }
 
 function renderLadderCurrentRound() {
@@ -907,6 +1022,7 @@ function ladderCompleteRound() {
   ladderState.courtTeams = newTeams;
 
   const lastDuration = (ladderState.roundTimer && ladderState.roundTimer.lastDurationSec) || 600;
+  stopLadderTimerInterval();
   ladderState.roundTimer = newRoundTimerState(lastDuration);
 
   renderLadderCurrentRound();
