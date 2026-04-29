@@ -953,12 +953,12 @@ function renderLadderHistory() {
 
   const courtsHighToLow = [...getLadderCourts()].reverse();
 
-  let html = '<div class="card"><h2 style="font-size:1.25rem;font-weight:700;color:#e2e8f0;margin-bottom:1.25rem;">Round History</h2>';
+  let html = '<div class="card ladder-history-card"><h2 class="ladder-history-heading">Round History</h2>';
 
   for (let ri = ladderState.rounds.length - 1; ri >= 0; ri--) {
     const round = ladderState.rounds[ri];
     const rNames = round.names || ladderState.names; // use snapshot, fallback for old data
-    html += `<div class="round" style="opacity:0.7;">
+    html += `<div class="round ladder-history-round">
       <div class="round-header"><span class="round-title">Round ${round.round}</span></div>
       <div class="courts">`;
 

@@ -844,3 +844,42 @@
   }
   .ladder-setup-locked .ladder-chip { cursor: not-allowed; opacity: 0.6; }
   .ladder-setup-locked .ladder-chip:hover { border-color: #2a2d37; background: #1e2028; }
+
+  /* --- Ladder current-round emphasis & history de-emphasis --- */
+  #ladderCurrentRound .card {
+    border-color: rgba(129,140,248,0.28);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.18), 0 0 0 1px rgba(129,140,248,0.18) inset;
+    position: relative;
+  }
+  #ladderCurrentRound .card::before {
+    content: '';
+    position: absolute; left: 0; top: 18px; bottom: 18px;
+    width: 3px; border-radius: 0 3px 3px 0;
+    background: linear-gradient(180deg, #818cf8, #a78bfa);
+    opacity: 0.85;
+  }
+
+  .ladder-history-card { position: relative; }
+  .ladder-history-heading {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #7c8091;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid #252830;
+  }
+  .ladder-history-round {
+    opacity: 0.4;
+    filter: saturate(0.65);
+    transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
+  }
+  .ladder-history-round:hover {
+    opacity: 0.95;
+    filter: saturate(1);
+  }
+  .print-ladder .ladder-history-round {
+    opacity: 1 !important;
+    filter: none !important;
+  }
