@@ -79,6 +79,7 @@ document.getElementById('modeRR').addEventListener('change', () => setMode('rr')
 document.getElementById('modeLadder').addEventListener('change', () => {
   setMode('ladder');
   if (!document.getElementById('ladderPlayerGrid').children.length) buildLadderPlayerGrid();
+  updateLadderSetupMessage();
 });
 
 // Boot code is in index.html after all scripts load

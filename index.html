@@ -93,10 +93,20 @@
   <div id="ladderSetup" style="display:none;">
     <div class="card">
       <div class="card-title">Ladder Setup</div>
-      <p style="font-size:0.82rem; color:#94a3b8; margin-bottom:0;">20 players on courts 2, 3, 7, 8, 9 &mdash; winners move up, losers move down</p>
+      <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <label class="option-label" for="ladderNumCourts">Number of Courts</label>
+          <input type="number" class="rounds-input" id="ladderNumCourts" value="5" min="1" max="10">
+        </div>
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <span class="option-label">Number of Players</span>
+          <span class="option-label" id="ladderNumPlayersDisplay" style="color:#a5b4fc; font-weight:600;">20 players</span>
+        </div>
+      </div>
+      <p id="ladderSetupMessage" style="font-size:0.82rem; color:#94a3b8; margin-bottom:0;">Winners move up, losers move down.</p>
     </div>
     <div class="card">
-      <div class="card-title">Players (20)</div>
+      <div class="card-title" id="ladderPlayersCardTitle">Players (20)</div>
       <div class="player-grid" id="ladderPlayerGrid"></div>
     </div>
     <div class="card">
