@@ -1015,18 +1015,19 @@ function restoreLadderState() {
   if (!state) return;
 
   ladderPlayerData = state.ladderPlayerData || [];
+  const ma = state.ladderConfig && state.ladderConfig.manualAssignment;
+  const maValid = ma == null || (Array.isArray(ma) && ma.every(row => Array.isArray(row)));
   if (state.ladderConfig
       && typeof state.ladderConfig.numCourts === 'number'
       && Array.isArray(state.ladderConfig.courtNumbers)
       && state.ladderConfig.numCourts >= 1
       && state.ladderConfig.numCourts <= 10
-      && state.ladderConfig.courtNumbers.length === state.ladderConfig.numCourts) {
+      && state.ladderConfig.courtNumbers.length === state.ladderConfig.numCourts
+      && maValid) {
     ladderConfig = {
       numCourts: state.ladderConfig.numCourts,
       courtNumbers: [...state.ladderConfig.courtNumbers],
-      manualAssignment: Array.isArray(state.ladderConfig.manualAssignment)
-        ? state.ladderConfig.manualAssignment.map(arr => [...arr])
-        : null,
+      manualAssignment: Array.isArray(ma) ? ma.map(arr => [...arr]) : null,
     };
   }
   if (state.ladderState) ladderState = state.ladderState;
