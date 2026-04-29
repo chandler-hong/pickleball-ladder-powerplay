@@ -67,7 +67,11 @@ function newRoundTimerState(lastDurationSec) {
 }
 
 function formatTimerMMSS(seconds) {
-  const s = Math.max(0, Math.floor(seconds));
+  // Round UP so the user sees the full input value (e.g. "10:00") for the
+  // first second after clicking Start, then a clean one-tick-per-second
+  // countdown — using floor here would make the display drop to "9:59"
+  // immediately because a few ms have always elapsed since startedAt.
+  const s = Math.max(0, Math.ceil(seconds));
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${r.toString().padStart(2, '0')}`;
