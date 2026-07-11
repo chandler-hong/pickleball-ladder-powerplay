@@ -1,10 +1,11 @@
 // --- LocalStorage persistence ---
-const STORAGE_KEY = 'powerplay_pickleball_state';
+const STORAGE_KEY = 'pickleball_rr_state';
 
 function saveState() {
   savePlayerData();
   saveCourtData();
   const state = {
+    schemaVersion: STATE_SCHEMA_VERSION,
     numPlayers: currentPlayerCount,
     numCourts: currentCourtCount,
     numRounds: document.getElementById('numRounds').value,
@@ -28,32 +29,39 @@ function restoreState() {
   let state;
   try { state = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch(e) {}
   if (!state) return false;
+  if (state.schemaVersion !== STATE_SCHEMA_VERSION) { clearSavedState(); return false; }
 
-  // Restore setup values
-  document.getElementById('numPlayers').value = state.numPlayers || 20;
-  document.getElementById('numCourts').value = state.numCourts || 4;
-  document.getElementById('numRounds').value = state.numRounds || 10;
-  document.getElementById('preferMixed').checked = state.preferMixed !== false;
+  try {
+    // Restore setup values
+    document.getElementById('numPlayers').value = state.numPlayers || 20;
+    document.getElementById('numCourts').value = state.numCourts || 4;
+    document.getElementById('numRounds').value = state.numRounds || 10;
+    document.getElementById('preferMixed').checked = state.preferMixed !== false;
 
-  // Restore grids (skipSave=true to avoid overwriting restored data)
-  playerData = state.playerData || [];
-  courtData = state.courtData || [];
-  buildPlayerGrid(state.numPlayers || 20, true);
-  buildCourtInputs(state.numCourts || 4, true);
+    // Restore grids (skipSave=true to avoid overwriting restored data)
+    playerData = state.playerData || [];
+    courtData = state.courtData || [];
+    buildPlayerGrid(state.numPlayers || 20, true);
+    buildCourtInputs(state.numCourts || 4, true);
 
-  // Restore schedule if it was generated
-  if (state.hasSchedule && state.scheduleResult && state.scheduleNames) {
-    scheduleCourtNames = state.scheduleCourtNames || [];
-    lastFullResult = state.fullResult || null;
-    roundNamesMap = state.roundNamesMap || {};
-    renderSchedule(state.scheduleResult, state.scheduleNames, scheduleCourtNames, !!state.roundNamesMap);
-    if (lastFullResult) renderStats(lastFullResult, state.scheduleNames);
-    roundWinners = state.roundWinners || {};
-    updateRoundStates();
-    document.getElementById('output').style.display = 'block';
+    // Restore schedule if it was generated
+    if (state.hasSchedule && state.scheduleResult && state.scheduleNames) {
+      scheduleCourtNames = state.scheduleCourtNames || [];
+      lastFullResult = state.fullResult || null;
+      roundNamesMap = state.roundNamesMap || {};
+      renderSchedule(state.scheduleResult, state.scheduleNames, scheduleCourtNames, !!state.roundNamesMap);
+      if (lastFullResult) renderStats(lastFullResult, state.scheduleNames);
+      roundWinners = state.roundWinners || {};
+      updateRoundStates();
+      document.getElementById('output').style.display = 'block';
+    }
+
+    return true;
+  } catch (e) {
+    // Corrupt or incompatible payload — reset rather than brick the boot.
+    clearSavedState();
+    return false;
   }
-
-  return true;
 }
 
 function clearSavedState() {

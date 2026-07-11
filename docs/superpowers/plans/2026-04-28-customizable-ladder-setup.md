@@ -38,7 +38,7 @@ Pure refactor — no UI changes, no behavior changes. Lays the groundwork for ev
 Open `js/ladder.js`. Find these lines near the top:
 
 ```js
-const LADDER_STORAGE_KEY = 'powerplay_pickleball_ladder_state';
+const LADDER_STORAGE_KEY = 'pickleball_ladder_state';
 const LADDER_COURTS = [2, 3, 7, 8, 9]; // lowest to highest
 const LADDER_PLAYER_COUNT = 20;
 ```
@@ -46,7 +46,7 @@ const LADDER_PLAYER_COUNT = 20;
 Replace with:
 
 ```js
-const LADDER_STORAGE_KEY = 'powerplay_pickleball_ladder_state';
+const LADDER_STORAGE_KEY = 'pickleball_ladder_state';
 
 let ladderConfig = {
   numCourts: 5,
@@ -1000,7 +1000,7 @@ Both already call `saveLadderState();` (added in Tasks 5/6) — verify those cal
 - [ ] **Step 5: Manual verification**
 
 - Open page, switch to Ladder, change Number of Courts to 6, change court 4 number, drag two chips to swap. Refresh. Verify all settings restore: 6 courts, the edited court number, and the swapped assignment.
-- Open the developer console, run `localStorage.removeItem('powerplay_pickleball_ladder_state')`, refresh. Verify the ladder defaults back to 5 courts with `[2, 3, 7, 8, 9]`.
+- Open the developer console, run `localStorage.removeItem('pickleball_ladder_state')`, refresh. Verify the ladder defaults back to 5 courts with `[2, 3, 7, 8, 9]`.
 - Open page in Ladder mode, configure 7 courts, click Start Ladder, complete a round, refresh. Verify the active ladder restores with the same court layout and locked setup.
 
 - [ ] **Step 6: Commit**

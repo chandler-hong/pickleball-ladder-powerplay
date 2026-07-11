@@ -77,7 +77,7 @@ function buildPlayerGrid(count, skipSave) {
           this.style.outline = '2px solid #f59e0b';
           const warn = document.createElement('div');
           warn.className = 'dup-warning';
-          warn.textContent = '"' + newName + '" already exists, please add a last name initial or else duplicate names will merge on the leaderboard!';
+          warn.textContent = '"' + newName + '" is already used. Add a last name initial to tell them apart on the leaderboard.';
           this.parentElement.appendChild(warn);
         } else {
           this.style.outline = '';
@@ -624,7 +624,7 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
     round.courts.forEach((court, ci) => {
       html += `<div class="court">
         <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
-          <div class="court-label" style="margin-bottom:0;">${courtNames[ci]}</div>
+          <div class="court-label" style="margin-bottom:0;">${esc(courtNames[ci])}</div>
           <button class="btn-swap" onclick="swapRRPartners(${round.round},${ci})">Swap Partners</button>
         </div>
         <div class="matchup">
@@ -679,7 +679,7 @@ function exportCSV() {
     csv += 'LEADERBOARD\nRank,Player,W,L,Win %\n';
     rrLeaderboardData.forEach((p, i) => {
       const pct = p.total > 0 ? (p.pct * 100).toFixed(0) + '%' : '';
-      csv += `${i + 1},"${p.name}",${p.wins},${p.losses},${pct}\n`;
+      csv += `${i + 1},${csvCell(p.name)},${p.wins},${p.losses},${pct}\n`;
     });
   }
 
@@ -695,10 +695,10 @@ function exportCSV() {
         const tA = `${rNames[court.teamA[0]]} & ${rNames[court.teamA[1]]}`;
         const tB = `${rNames[court.teamB[0]]} & ${rNames[court.teamB[1]]}`;
         const winner = rw && rw[ci] ? (rw[ci] === 'A' ? tA : tB) : '';
-        csv += `${ci + 1},"${tA}","${tB}","${winner}"\n`;
+        csv += `${ci + 1},${csvCell(tA)},${csvCell(tB)},${csvCell(winner)}\n`;
       });
       if (round.sitOuts.length > 0) {
-        csv += `Bye:,"${round.sitOuts.map(i => rNames[i]).join(', ')}"\n`;
+        csv += `Bye:,${csvCell(round.sitOuts.map(i => rNames[i]).join(', '))}\n`;
       }
     }
   }

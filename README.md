@@ -1,8 +1,8 @@
-# PowerPlay Pickleball Ladder Tool
+# Pickleball Round Robin & Ladder Tool
 
 A scheduling tool for pickleball round-robin tournaments and traditional ladder play. Generates fair, gender-balanced schedules that maximize partner and opponent diversity.
 
-**Live site:** [pickleladder.choxmox.com](https://pickleladder.choxmox.com)
+**Live site:** [pickle.choxmox.com](https://pickle.choxmox.com)
 
 ## Features
 
@@ -39,9 +39,9 @@ The schedule generator uses a three-phase constructive approach per round, follo
 1. **Sit-out selection** — gender-aware bye assignment with adaptive cooldown to maximize the gap between byes for any player. A concentration-based co-bye score prevents the same group from repeatedly sitting out together.
 2. **Partnership formation** — Kuhn's augmenting-path algorithm for optimal bipartite MF matching (with distinct-weight threshold iteration for 50-100× speedup); brute-force enumeration (up to 20 players) for same-gender pools.
 3. **Court grouping** — exhaustive search over all possible court assignments (for ≤ 6 courts) to minimize opponent repeats and court co-occurrence, with greedy fallback for larger pools.
-4. **2-opt repair (post-processing)** — for each pair of courts within a round, try swapping one player and re-pairing the teams. Accept any swap that strictly improves the schedule under `compareScores`. Runs under a time budget (~500ms).
+4. **2-opt repair (post-processing)** — for each pair of courts within a round, try swapping one player and re-pairing the teams. Accept any swap that strictly improves the schedule under `compareScores`. Runs under a small time budget (up to ~500ms).
 
-A multi-start wrapper runs phases 1-3 hundreds of times within an adaptive time budget (scaled to problem size, 2s-15s), scoring each schedule on gender balance, partner uniqueness, bye fairness, court diversity, and opponent spread. The best schedule is then sent through the 2-opt repair phase. Selection is via strict lexicographic comparison.
+A multi-start wrapper runs phases 1-3 hundreds of times within an adaptive time budget (scaled to problem size; 2s floor, 15s ceiling), scoring each schedule on gender balance, partner uniqueness, bye fairness, court diversity, and opponent spread. The best schedule is then sent through the 2-opt repair phase. Selection is via strict lexicographic comparison.
 
 ### Scheduling guarantees (for standard configs: 12-40 players, 2-10 courts, 1-30 rounds)
 
@@ -51,7 +51,7 @@ A multi-start wrapper runs phases 1-3 hundreds of times within an adaptive time 
 | MM vs FF courts | 0 |
 | Bye spread | ≤ 1 (max byes − min byes across players) |
 | Back-to-back byes | 0 |
-| Same-court pair streak | ≤ 2 consecutive rounds (no pair of players is ever on the same court 3 rounds in a row); when a pair must meet twice, the generator prefers spacing the meetings apart over back-to-back |
+| Same-court pair streak | Typically ≤ 2 consecutive rounds; the generator strongly avoids 3-in-a-row and spaces repeat meetings apart. In very tight low-court configs with no byes (e.g. 12 players / 3 courts), an occasional streak of 3 can occur. |
 | Duplicate players on a court | 0 (hard invariant, verified by tests) |
 | Gender balance (3M/1F) | 0 when even male count is achievable |
 
@@ -60,12 +60,14 @@ A multi-start wrapper runs phases 1-3 hundreds of times within an adaptive time 
 The `tests/` directory contains a Node-based test harness with deterministic (seeded) schedule generation:
 
 ```bash
-npm test              # run all tests (≈ 20s)
-npm run test:unit     # smoke tests — 12 cases, 1430 assertions
-npm run test:stress   # end-to-end — 7 scenarios, 3s budget each
+npm test              # run all suites (≈ 20s)
+npm run test:unit     # schedule smoke tests — 12 cases, 1430 assertions
+npm run test:stress   # schedule end-to-end — 7 scenarios, 3s budget each
+npm run test:utils    # utils helpers — csvCell, guessGender, shuffle, pickRandomNames
+npm run test:ladder   # ladder logic — scoring, pairing, movement, leaderboard
 ```
 
-The unit tests cover input validation, duplicate-player invariants, gender rules across balanced/skewed pools, bye-fairness invariants, determinism (same seed produces the same schedule), and 2-opt repair correctness.
+The schedule tests cover input validation, duplicate-player invariants, gender rules across balanced/skewed pools, bye-fairness invariants, determinism (same seed produces the same schedule), and 2-opt repair correctness. The utils and ladder suites cover CSV-injection escaping, gender detection (including unisex deferral), ladder score validation, up/down movement, and leaderboard stats (including the position-based Highest Court ranking).
 
 ## Tech stack
 
@@ -73,4 +75,4 @@ Pure vanilla HTML, CSS, and JavaScript. No frameworks, no build step, no runtime
 
 ## Credits
 
-Tool created by Chandler Hong and Claude Opus 4.7.
+Tool created by Chandler Hong and Claude Opus 4.8.

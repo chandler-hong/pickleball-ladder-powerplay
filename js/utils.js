@@ -1,7 +1,21 @@
+// Bump this whenever the shape of a persisted localStorage payload changes.
+// On restore, a missing/mismatched schemaVersion resets that store instead of
+// risking a throw on an incompatible shape.
+const STATE_SCHEMA_VERSION = 1;
+
 function esc(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+// Escape a value for safe inclusion in a CSV cell: doubles embedded quotes,
+// wraps fields that contain a delimiter, and neutralizes spreadsheet formula
+// injection by prefixing a leading = + - @ tab or CR with an apostrophe.
+function csvCell(value) {
+  let s = value == null ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
 }
 const FEMALE_NAMES = new Set([
   // --- English / American ---
@@ -647,8 +661,11 @@ const MALE_NAMES = new Set([
 function guessGender(name) {
   const key = name.trim().split(/\s+/)[0].toLowerCase();
   if (!key) return null;
-  if (FEMALE_NAMES.has(key)) return 'F';
-  if (MALE_NAMES.has(key)) return 'M';
+  const isF = FEMALE_NAMES.has(key);
+  const isM = MALE_NAMES.has(key);
+  if (isF && isM) return null; // unisex / ambiguous — let the user confirm the M/F toggle
+  if (isF) return 'F';
+  if (isM) return 'M';
   return null;
 }
 // --- Debounce helper ---
@@ -736,4 +753,10 @@ function pickRandomNames(count) {
   }
 
   return shuffle(result);
+}
+
+// Node/CommonJS export for tests. Guarded so the browser (where `module`
+// is undefined) is unaffected.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { csvCell, guessGender, shuffle, pickRandomNames, STATE_SCHEMA_VERSION };
 }

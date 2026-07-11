@@ -21,7 +21,7 @@ function ladderExportCSV() {
     csv += 'LEADERBOARD\nRank,Player,W,L,Win %,Streak,Current Court,Highest Court,Been Pickled\n';
     ladderLeaderboardData.forEach((p, i) => {
       const pct = p.total > 0 ? (p.pct * 100).toFixed(0) + '%' : '';
-      csv += `${i + 1},"${p.name}",${p.wins},${p.losses},${pct},${p.streak},${p.court},${p.highestCourt},${p.pickles}\n`;
+      csv += `${i + 1},${csvCell(p.name)},${p.wins},${p.losses},${pct},${p.streak},${p.court},${p.highestCourt},${p.pickles}\n`;
     });
   }
 
@@ -38,14 +38,14 @@ function ladderExportCSV() {
         const tA = `${rNames[c.teamA[0]]} & ${rNames[c.teamA[1]]}`;
         const tB = `${rNames[c.teamB[0]]} & ${rNames[c.teamB[1]]}`;
         const winner = c.winner === 'A' ? tA : tB;
-        csv += `${court},"${tA}",${c.scoreA},"${tB}",${c.scoreB},"${winner}"\n`;
+        csv += `${court},${csvCell(tA)},${c.scoreA},${csvCell(tB)},${c.scoreB},${csvCell(winner)}\n`;
       }
     }
   }
 
   downloadCSV(`ladder-results-${fileDate()}.csv`, csv);
 }
-const LADDER_STORAGE_KEY = 'powerplay_pickleball_ladder_state';
+const LADDER_STORAGE_KEY = 'pickleball_ladder_state';
 
 let ladderConfig = {
   numCourts: 5,
@@ -162,6 +162,7 @@ function applyLadderSetupLock() {
     container.classList.toggle('ladder-setup-locked', locked);
     container.querySelectorAll('.ladder-chip').forEach(chip => {
       chip.draggable = !locked;
+      chip.tabIndex = locked ? -1 : 0;
     });
     if (locked) clearLadderChipSelection();
   }
@@ -266,7 +267,7 @@ function buildLadderPlayerGrid() {
           this.style.outline = '2px solid #f59e0b';
           const warn = document.createElement('div');
           warn.className = 'dup-warning';
-          warn.textContent = '"' + newName + '" already exists, please add a last name initial or else duplicate names will merge on the leaderboard!';
+          warn.textContent = '"' + newName + '" is already used. Add a last name initial to tell them apart on the leaderboard.';
           this.parentElement.appendChild(warn);
         } else {
           this.style.outline = '';
@@ -342,6 +343,10 @@ function buildLadderCourtAssignments() {
       chip.dataset.courtIdx = String(idx);
       chip.dataset.slotIdx = String(s);
       chip.draggable = true;
+      chip.setAttribute('role', 'button');
+      chip.tabIndex = 0;
+      chip.setAttribute('aria-label',
+        `${names[pIdx] || 'Player ' + (pIdx + 1)}, Court ${num}. Press Enter to select, then Enter on another player to swap.`);
 
       const label = document.createElement('span');
       label.className = 'ladder-chip-name';
@@ -409,6 +414,11 @@ function buildLadderCourtAssignments() {
         const dstSlot = parseInt(this.dataset.slotIdx);
         clearLadderChipSelection();
         swapLadderAssignmentSlots(srcCourt, srcSlot, dstCourt, dstSlot);
+      });
+
+      // Keyboard equivalent of tap-to-swap for accessibility.
+      chip.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); }
       });
 
       col.appendChild(chip);
@@ -927,9 +937,7 @@ function scoreError(sa, sb) {
   if (sa < 0 || sb < 0) return 'Scores cannot be negative';
   if (sa === sb) return 'Scores cannot be tied';
   if (sa > 11 || sb > 11) return 'Max score is 11';
-  const hi = Math.max(sa, sb);
-  if (hi === 11) return null; // valid result
-  if (hi > 0 && hi < 11 && sa !== sb) return null; // game in progress, no error yet
+  // Otherwise the leader has 1-10 (game in progress) or exactly 11 (valid win) — no error.
   return null;
 }
 
@@ -1095,22 +1103,23 @@ function ladderCompleteRound() {
   document.getElementById('ladderCurrentRound').scrollIntoView({ behavior: 'smooth' });
 }
 
-function renderLadderLeaderboard() {
-  const section = document.getElementById('ladderLeaderboardSection');
-  if (!ladderState) { section.innerHTML = ''; return; }
-
-  // Build stats from round history using per-round names (supports substitutions)
+// Pure leaderboard computation (no DOM) — testable in isolation. Keyed by
+// "slotIdx:name" so a substitute sharing a name with a different slot isn't
+// merged. Rank/highest-court use ladder POSITION (index in ladderCourts,
+// ordered bottom->top), NOT the arbitrary court-number label.
+function computeLadderStats(rounds, fallbackNames, ladderCourts, courtPlayers) {
   const identityStats = {}; // "slotIdx:name" -> stats object
   const init = (key, name) => {
     if (!identityStats[key]) identityStats[key] = {
       name, slot: parseInt(key), wins: 0, losses: 0, pickles: 0,
-      highestCourt: 0, results: [], // results: ordered list of 'W'/'L' for streak calc
+      highestCourtIdx: -1, results: [], // results: ordered list of 'W'/'L' for streak calc
     };
   };
 
-  for (const round of ladderState.rounds) {
-    const rNames = round.names || ladderState.names;
-    for (const court of getLadderCourts()) {
+  for (const round of rounds) {
+    const rNames = round.names || fallbackNames;
+    for (let ci = 0; ci < ladderCourts.length; ci++) {
+      const court = ladderCourts[ci];
       const c = round.courts[court];
       const winTeam = c.winner === 'A' ? c.teamA : c.teamB;
       const loseTeam = c.winner === 'A' ? c.teamB : c.teamA;
@@ -1120,7 +1129,7 @@ function renderLadderLeaderboard() {
         init(key, rNames[p]);
         const s = identityStats[key];
         s.wins++;
-        if (court > s.highestCourt) s.highestCourt = court;
+        if (ci > s.highestCourtIdx) s.highestCourtIdx = ci;
         s.results.push('W');
       });
       loseTeam.forEach(p => {
@@ -1129,7 +1138,7 @@ function renderLadderLeaderboard() {
         const s = identityStats[key];
         s.losses++;
         if (loseScore === 0) s.pickles++;
-        if (court > s.highestCourt) s.highestCourt = court;
+        if (ci > s.highestCourtIdx) s.highestCourtIdx = ci;
         s.results.push('L');
       });
     }
@@ -1137,9 +1146,9 @@ function renderLadderLeaderboard() {
 
   // Determine current court from live state
   const currentCourt = {};
-  for (const court of getLadderCourts()) {
-    if (ladderState.courtPlayers[court]) {
-      ladderState.courtPlayers[court].forEach(p => { currentCourt[p] = court; });
+  for (const court of ladderCourts) {
+    if (courtPlayers && courtPlayers[court]) {
+      courtPlayers[court].forEach(p => { currentCourt[p] = court; });
     }
   }
 
@@ -1158,11 +1167,19 @@ function renderLadderLeaderboard() {
       pct: (s.wins + s.losses) > 0 ? s.wins / (s.wins + s.losses) : 0,
       court: currentCourt[s.slot] || '\u2014',
       streak,
-      highestCourt: s.highestCourt,
+      highestCourt: s.highestCourtIdx >= 0 ? ladderCourts[s.highestCourtIdx] : 0,
       pickles: s.pickles,
     };
   });
   players.sort((a, b) => b.pct - a.pct || b.wins - a.wins || a.losses - b.losses);
+  return players;
+}
+
+function renderLadderLeaderboard() {
+  const section = document.getElementById('ladderLeaderboardSection');
+  if (!ladderState) { section.innerHTML = ''; return; }
+
+  const players = computeLadderStats(ladderState.rounds, ladderState.names, getLadderCourts(), ladderState.courtPlayers);
 
   const totalGames = players.reduce((a, p) => a + p.wins, 0);
   if (totalGames === 0) {
@@ -1251,6 +1268,7 @@ function saveLadderPlayerData() {
 
 function saveLadderState() {
   const state = {
+    schemaVersion: STATE_SCHEMA_VERSION,
     ladderPlayerData,
     ladderConfig: {
       numCourts: ladderConfig.numCourts,
@@ -1270,54 +1288,61 @@ function restoreLadderState() {
   let state;
   try { state = JSON.parse(localStorage.getItem(LADDER_STORAGE_KEY)); } catch(e) {}
   if (!state) return;
+  if (state.schemaVersion !== STATE_SCHEMA_VERSION) { clearLadderState(); return; }
 
-  ladderPlayerData = state.ladderPlayerData || [];
-  const ma = state.ladderConfig && state.ladderConfig.manualAssignment;
-  const maValid = ma == null || (Array.isArray(ma) && ma.every(row => Array.isArray(row)));
-  if (state.ladderConfig
-      && typeof state.ladderConfig.numCourts === 'number'
-      && Array.isArray(state.ladderConfig.courtNumbers)
-      && state.ladderConfig.numCourts >= 1
-      && state.ladderConfig.numCourts <= 10
-      && state.ladderConfig.courtNumbers.length === state.ladderConfig.numCourts
-      && maValid) {
-    ladderConfig = {
-      numCourts: state.ladderConfig.numCourts,
-      courtNumbers: [...state.ladderConfig.courtNumbers],
-      manualAssignment: Array.isArray(ma) ? ma.map(arr => [...arr]) : null,
-    };
-  }
-  if (state.ladderState) {
-    ladderState = state.ladderState;
-    if (!ladderState.roundTimer) {
-      ladderState.roundTimer = newRoundTimerState(600);
+  try {
+    ladderPlayerData = state.ladderPlayerData || [];
+    const ma = state.ladderConfig && state.ladderConfig.manualAssignment;
+    const maValid = ma == null || (Array.isArray(ma) && ma.every(row => Array.isArray(row)));
+    if (state.ladderConfig
+        && typeof state.ladderConfig.numCourts === 'number'
+        && Array.isArray(state.ladderConfig.courtNumbers)
+        && state.ladderConfig.numCourts >= 1
+        && state.ladderConfig.numCourts <= 10
+        && state.ladderConfig.courtNumbers.length === state.ladderConfig.numCourts
+        && maValid) {
+      ladderConfig = {
+        numCourts: state.ladderConfig.numCourts,
+        courtNumbers: [...state.ladderConfig.courtNumbers],
+        manualAssignment: Array.isArray(ma) ? ma.map(arr => [...arr]) : null,
+      };
     }
-  }
+    if (state.ladderState) {
+      ladderState = state.ladderState;
+      if (!ladderState.roundTimer) {
+        ladderState.roundTimer = newRoundTimerState(600);
+      }
+    }
 
-  if (state.mode === 'ladder') {
-    document.getElementById('modeLadder').checked = true;
-    setMode('ladder');
-    document.getElementById('ladderNumCourts').value = ladderConfig.numCourts;
-    buildLadderPlayerGrid();
-    buildLadderCourtInputs();
-    buildLadderCourtAssignments();
-    updateLadderSetupMessage();
-    if (ladderState) {
-      document.getElementById('ladderOutput').style.display = 'block';
-      renderLadderCurrentRound();
-      renderLadderLeaderboard();
-      renderLadderHistory();
-      resumeLadderTimerOnRestore();
+    if (state.mode === 'ladder') {
+      document.getElementById('modeLadder').checked = true;
+      setMode('ladder');
+      document.getElementById('ladderNumCourts').value = ladderConfig.numCourts;
+      buildLadderPlayerGrid();
+      buildLadderCourtInputs();
+      buildLadderCourtAssignments();
+      updateLadderSetupMessage();
+      if (ladderState) {
+        document.getElementById('ladderOutput').style.display = 'block';
+        renderLadderCurrentRound();
+        renderLadderLeaderboard();
+        renderLadderHistory();
+        resumeLadderTimerOnRestore();
+      }
     }
+    applyLadderSetupLock();
+  } catch (e) {
+    // Corrupt or incompatible payload — reset rather than brick the boot.
+    clearLadderState();
+    ladderState = null;
   }
-  applyLadderSetupLock();
 }
 
 function clearLadderState() {
   try { localStorage.removeItem(LADDER_STORAGE_KEY); } catch(e) {}
 }
 
-(function initLadderSetupInputs() {
+if (typeof document !== 'undefined') (function initLadderSetupInputs() {
   const numCourtsEl = document.getElementById('ladderNumCourts');
   if (numCourtsEl) {
     numCourtsEl.addEventListener('input', function() {
@@ -1338,3 +1363,17 @@ function clearLadderState() {
     });
   }
 })();
+
+// Node/CommonJS export for tests. Guarded so the browser is unaffected.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    isValidPickleballResult,
+    scoreError,
+    formatTimerMMSS,
+    bestPairing,
+    randomGenderBalancedAssignment,
+    ladderProcessMovement,
+    computeLadderStats,
+    ladderConfig,
+  };
+}
