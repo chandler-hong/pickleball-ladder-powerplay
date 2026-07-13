@@ -10,12 +10,13 @@
   .container { max-width: 1000px; margin: 0 auto; }
 
   /* Header */
-  .header { text-align: center; margin-bottom: 2.5rem; }
+  .header { text-align: center; margin-bottom: 2.5rem; position: relative; }
   .header h1 {
     font-size: 2.25rem; font-weight: 700; letter-spacing: -0.03em;
     background: linear-gradient(135deg, #c4b5fd, #93c5fd);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     margin-bottom: 0.35rem;
+    padding: 0 3rem;
   }
   .header p { color: #6b7280; font-size: 0.9rem; font-weight: 400; }
   .title-emoji {
@@ -224,6 +225,11 @@
     border: 1px solid rgba(248,113,113,0.15);
   }
   .btn-danger:hover { background: rgba(248,113,113,0.15); color: #fecaca; }
+  .btn-fill {
+    background: rgba(253,224,71,0.1); color: #fde68a;
+    border: 1px solid rgba(253,224,71,0.18);
+  }
+  .btn-fill:hover { background: rgba(253,224,71,0.16); color: #fef08a; }
 
   /* Schedule Section */
   .schedule-header {
@@ -473,6 +479,8 @@
   .lb-streak-l { color: #fca5a5; font-weight: 600; }
   .lb-best { color: #c4b5fd; }
   .lb-pickles { color: #fde68a; }
+  .lb-diff-pos { color: #6ee7b7; }
+  .lb-diff-neg { color: #fca5a5; }
 
   #output { display: none; }
 
@@ -493,6 +501,34 @@
     background: linear-gradient(135deg, #818cf8, #a78bfa);
     color: #fff; box-shadow: 0 2px 8px rgba(129,140,248,0.2);
   }
+
+  /* Round Robin score-entry controls */
+  .rr-scoring-controls {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 0.75rem 1.5rem; margin-bottom: 1.25rem;
+  }
+  .rr-scoring-group { display: flex; align-items: center; gap: 0.5rem; }
+  .rr-scoring-label {
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #7c8091;
+  }
+  .rr-scoring-hint { font-size: 0.72rem; color: #5a5f72; }
+  .seg-toggle {
+    display: inline-flex; gap: 0.15rem; padding: 0.2rem;
+    background: #1e2028; border: 1px solid #252830; border-radius: 9px;
+  }
+  .seg-btn {
+    font-family: inherit; font-size: 0.78rem; font-weight: 600;
+    color: #7c8091; background: transparent; border: none;
+    border-radius: 7px; padding: 0.35rem 0.8rem; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .seg-btn:hover { color: #c7d2fe; }
+  .seg-btn.active {
+    background: linear-gradient(135deg, #818cf8, #a78bfa); color: #fff;
+    box-shadow: 0 1px 6px rgba(129,140,248,0.25);
+  }
+  .rr-score-error-slot:empty { display: none; }
 
   /* Ladder Styles */
   .ladder-courts { display: flex; flex-direction: column; gap: 0.6rem; }
@@ -614,8 +650,9 @@
     .player-grid { grid-template-columns: 1fr; gap: 0.5rem; }
     .player-input input[type="text"] { min-height: 44px; font-size: 1rem; padding: 0.6rem 0.75rem; }
     .gender-toggle label {
-      padding: 0.5rem 0.7rem; font-size: 0.75rem;
-      min-height: 44px; display: flex; align-items: center; justify-content: center;
+      padding: 0.65rem 1.15rem; font-size: 0.92rem;
+      min-width: 3rem; min-height: 48px;
+      display: flex; align-items: center; justify-content: center;
     }
     .court-num-input { min-height: 44px; width: 64px; font-size: 1rem; padding: 0.6rem; }
     .controls { flex-direction: column; gap: 0.6rem; }
@@ -624,7 +661,19 @@
     .schedule-header { flex-wrap: wrap; gap: 0.5rem; }
     .schedule-header h2 { font-size: 1.1rem; }
     .btn-export-pdf, .btn-export-csv { min-height: 40px; padding: 0.5rem 1rem; font-size: 0.8rem; }
-    .current-round-banner { padding: 0.7rem 1rem; font-size: 0.85rem; }
+    .current-round-banner { padding: 0.7rem 1rem; font-size: 0.85rem; flex-wrap: wrap; }
+    /* Round timer: drop onto its own full-width line and enlarge tap targets */
+    .current-round-banner .current-round-timer-slot { margin-left: 0; width: 100%; }
+    .round-timer { width: 100%; justify-content: flex-start; gap: 0.5rem 0.7rem; }
+    .round-timer-input { min-height: 42px; width: 68px; font-size: 1rem; }
+    .btn-timer { min-height: 42px; padding: 0.5rem 1rem; font-size: 0.88rem; }
+    .round-timer-display { font-size: 1.3rem; }
+    /* Pin the current round to the top (right under the timer) so people on a
+       later round don't have to scroll. Order-only; DOM/tab order is unchanged. */
+    #scheduleSection { display: flex; flex-direction: column; }
+    #scheduleSection .schedule-header { order: -3; }
+    #scheduleSection #currentRoundBanner { order: -2; }
+    #scheduleSection .round.current-round { order: -1; }
     .round-header { flex-wrap: wrap; gap: 0.4rem; }
     .round-header-right { margin-left: 0; width: 100%; }
     .round-title { font-size: 0.9rem; }
@@ -1105,3 +1154,183 @@
     display: inline-flex;
     align-items: center;
   }
+
+  /* ============================================================
+     Light theme — opt-in via [data-theme="light"] on <html>.
+     Additive overrides only; dark theme and print styles untouched.
+     ============================================================ */
+  [data-theme="light"] body { background: #f4f5f8; color: #1b1e26; }
+  [data-theme="light"] .header h1 {
+    background: linear-gradient(135deg, #6d28d9, #2563eb);
+    -webkit-background-clip: text; background-clip: text;
+  }
+  [data-theme="light"] .header p { color: #6b7280; }
+
+  [data-theme="light"] .card,
+  [data-theme="light"] .stat-card,
+  [data-theme="light"] .matrix-container,
+  [data-theme="light"] .leaderboard-table {
+    background: #ffffff; border-color: #e4e7ec; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  [data-theme="light"] .card-title,
+  [data-theme="light"] .player-gender-count,
+  [data-theme="light"] .stat-card h3,
+  [data-theme="light"] .matrix-container h3 { color: #6b7280; }
+
+  [data-theme="light"] .player-input input[type="text"],
+  [data-theme="light"] .court-num-input,
+  [data-theme="light"] .rounds-input,
+  [data-theme="light"] .ladder-score-input,
+  [data-theme="light"] .round-timer-input {
+    background: #eef0f4; border-color: #d7dbe3; color: #1b1e26;
+  }
+  [data-theme="light"] .player-input input[type="text"]::placeholder { color: #9aa1ad; }
+  [data-theme="light"] .player-input input[type="text"]:hover,
+  [data-theme="light"] .court-num-input:hover,
+  [data-theme="light"] .rounds-input:hover,
+  [data-theme="light"] .ladder-score-input:hover { border-color: #c3c8d4; }
+  [data-theme="light"] .player-input input[type="text"]:focus,
+  [data-theme="light"] .court-num-input:focus,
+  [data-theme="light"] .rounds-input:focus,
+  [data-theme="light"] .ladder-score-input:focus { background: #ffffff; border-color: #6366f1; }
+  [data-theme="light"] .player-num,
+  [data-theme="light"] .court-num-group span { color: #9aa1ad; }
+
+  [data-theme="light"] .gender-toggle { background: #eef0f4; border-color: #d7dbe3; }
+  [data-theme="light"] .gender-toggle label { color: #6b7280; }
+  [data-theme="light"] .gender-toggle label:hover { color: #374151; }
+  [data-theme="light"] .gender-toggle input:checked + label.g-m { background: rgba(99,102,241,0.14); color: #4338ca; }
+  [data-theme="light"] .gender-toggle input:checked + label.g-f { background: rgba(219,39,119,0.12); color: #be185d; }
+  [data-theme="light"] .pgc-m { color: #4338ca; background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.2); }
+  [data-theme="light"] .pgc-f { color: #be185d; background: rgba(219,39,119,0.1); border-color: rgba(219,39,119,0.2); }
+  [data-theme="light"] .pgc-sep { color: #cbd0d8; }
+  [data-theme="light"] .pgc-progress { color: #9aa1ad; }
+  [data-theme="light"] .gender-hint, [data-theme="light"] .dup-warning { color: #b45309; }
+
+  [data-theme="light"] .toggle-track { background: #e2e5eb; border-color: #d7dbe3; }
+  [data-theme="light"] .toggle-track::after { background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  [data-theme="light"] .toggle-switch input:checked + .toggle-track { background: rgba(99,102,241,0.25); border-color: rgba(99,102,241,0.4); }
+  [data-theme="light"] .toggle-switch input:checked + .toggle-track::after { background: #6366f1; }
+  [data-theme="light"] .option-label, [data-theme="light"] .controls label { color: #52586a; }
+  [data-theme="light"] .option-label:hover { color: #1b1e26; }
+
+  [data-theme="light"] .btn-secondary { background: #e7eaf0; border-color: #cbd1db; color: #3f4657; }
+  [data-theme="light"] .btn-secondary:hover { background: #dce0e8; color: #1b1e26; }
+  [data-theme="light"] .btn-fill { background: rgba(202,138,4,0.16); color: #92400e; border-color: rgba(202,138,4,0.4); }
+  [data-theme="light"] .btn-fill:hover { background: rgba(202,138,4,0.24); color: #78350f; }
+  [data-theme="light"] .btn-danger { background: rgba(220,38,38,0.12); color: #a41414; border-color: rgba(220,38,38,0.32); }
+  [data-theme="light"] .btn-danger:hover { background: rgba(220,38,38,0.2); color: #7f1010; }
+  [data-theme="light"] .btn-export-pdf { background: rgba(234,88,12,0.14); border-color: rgba(234,88,12,0.34); color: #9a3412; }
+  [data-theme="light"] .btn-export-pdf:hover { background: rgba(234,88,12,0.22); color: #7c2d12; }
+  [data-theme="light"] .btn-export-csv { background: rgba(5,150,105,0.14); border-color: rgba(5,150,105,0.34); color: #036448; }
+  [data-theme="light"] .btn-export-csv:hover { background: rgba(5,150,105,0.22); color: #024a35; }
+
+  [data-theme="light"] .mode-selector { background: #eef0f4; border-color: #d7dbe3; }
+  [data-theme="light"] .mode-selector label { color: #6b7280; }
+
+  [data-theme="light"] .schedule h2, [data-theme="light"] .stats h2, [data-theme="light"] .leaderboard h2 { color: #1b1e26; }
+  [data-theme="light"] .current-round-banner { background: rgba(99,102,241,0.06); border-color: rgba(99,102,241,0.18); }
+  [data-theme="light"] .current-round-text { color: #4338ca; }
+  [data-theme="light"] .current-round-text span { color: #1b1e26; }
+  [data-theme="light"] .all-done-text { color: #047857; }
+  [data-theme="light"] .round { background: #ffffff; border-color: #e4e7ec; }
+  [data-theme="light"] .round.current-round { border-color: rgba(99,102,241,0.35); }
+  [data-theme="light"] .round-title { color: #1b1e26; }
+  [data-theme="light"] .court { background: #f7f8fa; border-color: #e4e7ec; }
+  [data-theme="light"] .court-label { color: #1b1e26; background: #e9ebf0; }
+  [data-theme="light"] .team-a { background: #dbeafe; color: #1d4ed8; }
+  [data-theme="light"] .team-b { background: #fee2e2; color: #b91c1c; }
+  [data-theme="light"] .team.winner { background: #d1fae5; color: #047857; box-shadow: 0 0 0 1.5px rgba(5,150,105,0.3); }
+  [data-theme="light"] .serve-badge { background: #bfdbfe; color: #1d4ed8; }
+  [data-theme="light"] .vs { color: #9aa1ad; }
+  [data-theme="light"] .sit-out { background: #fee2e2; color: #b91c1c; border-color: rgba(220,38,38,0.2); }
+  [data-theme="light"] .round.round-completed .round-title,
+  [data-theme="light"] .round.round-completed .court-label,
+  [data-theme="light"] .round.round-completed .sit-out,
+  [data-theme="light"] .team.loser { text-decoration-color: rgba(0,0,0,0.25); }
+
+  [data-theme="light"] .stats-chevron { background: rgba(0,0,0,0.05); color: #9aa1ad; }
+  [data-theme="light"] .stats-toggle:hover .stats-chevron { background: rgba(0,0,0,0.08); color: #6b7280; }
+  [data-theme="light"] .stat-row { border-bottom-color: #eef0f4; }
+  [data-theme="light"] .stat-name { color: #6b7280; }
+  [data-theme="light"] .stat-value { color: #374151; }
+  [data-theme="light"] .diversity-bar, [data-theme="light"] .lb-bar { background: rgba(0,0,0,0.06); }
+  [data-theme="light"] table.matrix th { color: #9aa1ad; }
+  [data-theme="light"] table.matrix td { color: #4b5563; }
+  [data-theme="light"] table.matrix td.diag { background: rgba(0,0,0,0.03); color: #cbd0d8; }
+  [data-theme="light"] .heat-0 { background: rgba(0,0,0,0.03); }
+  [data-theme="light"] .heat-3 { color: #1b1e26; }
+  [data-theme="light"] .heat-4, [data-theme="light"] .heat-5 { color: #ffffff; }
+
+  [data-theme="light"] .error-banner { background: rgba(220,38,38,0.07); border-color: rgba(220,38,38,0.18); color: #b91c1c; }
+  [data-theme="light"] .input-error { border-color: #dc2626 !important; background: rgba(220,38,38,0.05) !important; }
+
+  [data-theme="light"] .leaderboard-table th { color: #6b7280; border-bottom-color: #e4e7ec; }
+  [data-theme="light"] .leaderboard-table td { border-bottom-color: #eef0f4; }
+  [data-theme="light"] .leaderboard-table tbody tr:hover { background: rgba(0,0,0,0.02); }
+  [data-theme="light"] .lb-rank { color: #9aa1ad; }
+  [data-theme="light"] .lb-name { color: #1b1e26; }
+  [data-theme="light"] .lb-wins, [data-theme="light"] .lb-streak-w { color: #047857; }
+  [data-theme="light"] .lb-losses, [data-theme="light"] .lb-streak-l { color: #b91c1c; }
+  [data-theme="light"] .lb-pct { color: #4338ca; }
+  [data-theme="light"] .lb-court { color: #6b7280; }
+  [data-theme="light"] .lb-best { color: #6d28d9; }
+  [data-theme="light"] .lb-pickles { color: #b45309; }
+  [data-theme="light"] .lb-empty { color: #cbd0d8; }
+  [data-theme="light"] .lb-bar-w { background: #10b981; }
+  [data-theme="light"] .lb-bar-l { background: #ef4444; }
+
+  [data-theme="light"] .ladder-court,
+  [data-theme="light"] .ladder-assignment-court { background: #f7f8fa; border-color: #e4e7ec; }
+  [data-theme="light"] .ladder-assignment-head { color: #52586a; border-bottom-color: #e4e7ec; }
+  [data-theme="light"] .ladder-assignment-hint { color: #4338ca; background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.2); }
+  [data-theme="light"] .ladder-chip { background: #ffffff; border-color: #d7dbe3; }
+  [data-theme="light"] .ladder-chip:hover { background: #f0f1f5; border-color: #c3c8d4; }
+  [data-theme="light"] .ladder-chip-gender.g-m { background: rgba(99,102,241,0.14); color: #4338ca; }
+  [data-theme="light"] .ladder-chip-gender.g-f { background: rgba(219,39,119,0.12); color: #be185d; }
+  [data-theme="light"] .ladder-history-heading { color: #6b7280; border-bottom-color: #e4e7ec; }
+  [data-theme="light"] .btn-swap { background: rgba(202,138,4,0.16); border-color: rgba(202,138,4,0.4); color: #854d0e; }
+  [data-theme="light"] .btn-swap:hover { background: rgba(202,138,4,0.24); color: #663c07; }
+  [data-theme="light"] .btn-early { background: rgba(234,88,12,0.12); border-color: rgba(234,88,12,0.32); color: #9a3412; }
+  [data-theme="light"] .btn-early:hover { background: rgba(234,88,12,0.2); color: #7c2d12; }
+  [data-theme="light"] .btn-early.btn-early-active { background: rgba(234,88,12,0.22); border-color: rgba(234,88,12,0.45); color: #7c2d12; }
+  [data-theme="light"] .ladder-score-error { background: rgba(220,38,38,0.06); border-color: rgba(220,38,38,0.18); color: #b91c1c; }
+  [data-theme="light"] .gender-warning { background: rgba(217,119,6,0.08); border-color: rgba(217,119,6,0.3); color: #b45309; }
+  [data-theme="light"] .gender-warning strong { color: #92400e; }
+  [data-theme="light"] .court-done-badge { color: #047857; background: rgba(5,150,105,0.1); border-color: rgba(5,150,105,0.25); }
+
+  [data-theme="light"] .round-timer-label, [data-theme="light"] .round-timer-unit { color: #6b7280; }
+  [data-theme="light"] .round-timer-display { color: #4338ca; }
+  [data-theme="light"] .round-timer-paused .round-timer-display { color: #6b7280; }
+  [data-theme="light"] .round-timer-tag { color: #6b7280; background: #eef0f4; border-color: #d7dbe3; }
+  [data-theme="light"] .btn-timer-start, [data-theme="light"] .btn-timer-resume { background: rgba(99,102,241,0.16); color: #3730a3; border-color: rgba(99,102,241,0.34); }
+  [data-theme="light"] .btn-timer-start:hover, [data-theme="light"] .btn-timer-resume:hover { background: rgba(99,102,241,0.24); color: #312e81; }
+  [data-theme="light"] .btn-timer-pause { background: rgba(202,138,4,0.16); color: #854d0e; border-color: rgba(202,138,4,0.34); }
+  [data-theme="light"] .btn-timer-pause:hover { background: rgba(202,138,4,0.24); }
+  [data-theme="light"] .btn-timer-reset { background: rgba(220,38,38,0.12); color: #a41414; border-color: rgba(220,38,38,0.3); }
+  [data-theme="light"] .btn-timer-reset:hover { background: rgba(220,38,38,0.2); }
+
+  [data-theme="light"] .generating-overlay { background: rgba(244,245,248,0.9); }
+  [data-theme="light"] .generating-text { color: #52586a; }
+  [data-theme="light"] .generating-detail { color: #6b7280; }
+  [data-theme="light"] .version-indicator { color: #9aa1ad; }
+
+  [data-theme="light"] .rr-scoring-label { color: #6b7280; }
+  [data-theme="light"] .rr-scoring-hint { color: #9aa1ad; }
+  [data-theme="light"] .seg-toggle { background: #eef0f4; border-color: #d7dbe3; }
+  [data-theme="light"] .seg-btn { color: #6b7280; }
+  [data-theme="light"] .seg-btn:hover { color: #312e81; }
+  [data-theme="light"] .lb-diff-pos { color: #047857; }
+  [data-theme="light"] .lb-diff-neg { color: #b91c1c; }
+
+  /* Theme toggle button (in the header) */
+  .theme-toggle {
+    position: absolute; top: 0; right: 0;
+    width: 40px; height: 40px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 1.15rem; line-height: 1; cursor: pointer;
+    background: rgba(129,140,248,0.1); border: 1px solid rgba(129,140,248,0.22);
+    transition: all 0.2s ease;
+  }
+  .theme-toggle:hover { background: rgba(129,140,248,0.2); transform: translateY(-1px); }
+  [data-theme="light"] .theme-toggle { background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.25); }

@@ -10,12 +10,25 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥒</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script>const APP_VERSION = "2.7.0";</script>
+<script>const APP_VERSION = "2.9.2";</script>
+<script>
+// Apply saved/system theme before CSS loads so there's no flash of the wrong theme.
+(function(){
+  try {
+    var t = localStorage.getItem('pickleball_theme');
+    if (t !== 'light' && t !== 'dark') {
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  } catch(e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+})();
+</script>
 <script>document.write('<link rel="stylesheet" href="css/styles.css?v=' + APP_VERSION + '">');</script>
 </head>
 <body>
 <div class="container">
   <div class="header">
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">🌙</button>
     <h1><span class="title-emoji">🥒</span> Pickleball Round Robin &amp; Ladder Tool</h1>
     <p>Tool created by Chandler Hong and Claude Opus 4.8 :)</p>
   </div>
@@ -60,6 +73,7 @@
       </label>
       <span class="option-label" onclick="document.getElementById('preferMixed').click()">Prefer mixed doubles (1M + 1F per team)</span>
     </div>
+    <div id="rrScoringControls" class="rr-scoring-controls" style="margin-top:1.25rem; margin-bottom:0;"></div>
     <div id="genderWarning" class="gender-warning" style="display:none;"></div>
   </div>
 
@@ -80,7 +94,7 @@
     <div class="controls" style="margin-top:0;">
       <div class="spacer"></div>
       <button class="btn btn-danger" onclick="newTournament()">Reset Tool</button>
-      <button class="btn" style="background:rgba(253,224,71,0.1); color:#fde68a; border:1px solid rgba(253,224,71,0.18);" onclick="fillDefaults()">Fill Random Names</button>
+      <button class="btn btn-fill" onclick="fillDefaults()">Fill Random Names</button>
       <button class="btn btn-primary" onclick="generate()">Generate Schedule</button>
     </div>
   </div>
@@ -129,7 +143,7 @@
       <div class="controls" style="margin-top:0;">
         <div class="spacer"></div>
         <button class="btn btn-danger" onclick="ladderReset()">Reset Ladder</button>
-        <button class="btn" style="background:rgba(253,224,71,0.1); color:#fde68a; border:1px solid rgba(253,224,71,0.18);" onclick="ladderFillDefaults()">Fill Random Names</button>
+        <button class="btn btn-fill" onclick="ladderFillDefaults()">Fill Random Names</button>
         <button class="btn btn-primary" onclick="ladderStart()">Start Ladder</button>
       </div>
     </div>
@@ -155,6 +169,20 @@ try { localStorage.removeItem('powerplay_pickleball_state'); localStorage.remove
 try { restoreState(); } catch(e) {}
 try { restoreLadderState(); } catch(e) {}
 document.getElementById('versionIndicator').textContent = 'v' + APP_VERSION;
+// Theme toggle: reflect the active theme on the button and persist the user's choice.
+(function(){
+  var btn = document.getElementById('themeToggle');
+  function apply(t){
+    document.documentElement.setAttribute('data-theme', t);
+    if (btn){ btn.textContent = t === 'light' ? '☀️' : '🌙'; btn.setAttribute('aria-pressed', t === 'light'); }
+  }
+  apply(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+  if (btn) btn.addEventListener('click', function(){
+    var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    try { localStorage.setItem('pickleball_theme', next); } catch(e) {}
+    apply(next);
+  });
+})();
 </script>
 </body>
 </html>

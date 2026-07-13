@@ -42,6 +42,11 @@ const SCHEDULE_WEIGHTS = Object.freeze({
   // Partnership matching (Phase 2): a single partner repeat must outrank
   // any combination of other considerations, hence the large multiplier.
   PARTNER_REPEAT_EDGE: 200,
+  // A back-to-back partnership (same pair partnered the immediately previous
+  // round) is a hard-rule violation. This must dominate any partner-repeat-count
+  // difference so the matcher never re-teams last-round partners unless a
+  // complete matching is otherwise impossible.
+  CONSEC_PARTNER_EDGE: 100000,
   // Small penalties that act as tiebreakers inside a given partner-repeat bucket.
   // RECENT_SAME_COURT_EDGE discourages pairing two players in Phase 2 when they
   // shared a court recently (reduces back-to-back courtmate pairs).
@@ -73,6 +78,33 @@ const SCHEDULE_WEIGHTS = Object.freeze({
   DEFAULT_TIME_BUDGET_MS: 10000,
   ASYNC_CHUNK_MS: 80,
 });
+
+// A gender-valid court pairs same-type teams (MFvMF, MMvMM, or FFvFF); pairing an
+// MM team against an FF team makes a banned MM-vs-FF court. That is only avoidable
+// when the MM and FF team counts are BOTH even. Partner-repeat heuristics (e.g.
+// releasing MF pairs to same-gender) can leave both odd — e.g. 3 MM + 1 FF — which
+// forces one MM-vs-FF court. Restore parity by converting one MM + one FF team into
+// two MF teams (choosing the pairing with the fewest partner repeats).
+function fixGenderTeamParity(partnerships, genders, partnerCount) {
+  const mm = [], ff = [];
+  for (let i = 0; i < partnerships.length; i++) {
+    const [a, b] = partnerships[i];
+    if (genders[a] === genders[b]) (genders[a] === 'M' ? mm : ff).push(i);
+  }
+  // Only both-odd forces an MM-vs-FF court. (If either is even, the round is either
+  // already groupable or constrained by an odd play count, i.e. an unavoidable 3/1.)
+  if (mm.length % 2 === 0 || ff.length % 2 === 0) return;
+  const mi = mm[mm.length - 1], fi = ff[ff.length - 1];
+  const [m1, m2] = partnerships[mi];
+  const [f1, f2] = partnerships[fi];
+  if (partnerCount[m1][f1] + partnerCount[m2][f2] <= partnerCount[m1][f2] + partnerCount[m2][f1]) {
+    partnerships[mi] = [m1, f1];
+    partnerships[fi] = [m2, f2];
+  } else {
+    partnerships[mi] = [m1, f2];
+    partnerships[fi] = [m2, f1];
+  }
+}
 
 function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed) {
   if (!Number.isInteger(numPlayers) || numPlayers <= 0) throw new Error(`numPlayers must be a positive integer (got ${numPlayers})`);
@@ -246,9 +278,36 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
       const bestSitM = best.sitM;
       const bestSitF = numSitOuts - bestSitM;
       cumMaleByes += bestSitM;
+
+      // Choose WHICH players sit (given the per-gender counts) so bye partners
+      // vary. Greedily pick within a gender: avoid back-to-back byes (hard),
+      // keep byes fair (fewest sit-outs first), then prefer players who have NOT
+      // already sat out with those picked this round — so the same pair isn't
+      // benched together every time — then spread co-byes and space byes out.
+      const pickSitters = (pool, k) => {
+        const picked = [];
+        const avail = [...pool];
+        for (let s = 0; s < k && avail.length > 0; s++) {
+          avail.sort((a, b) => {
+            const aBtb = roundsSinceLastBye[a] === 1 ? 1 : 0;
+            const bBtb = roundsSinceLastBye[b] === 1 ? 1 : 0;
+            if (aBtb !== bBtb) return aBtb - bBtb;
+            if (sitOutCount[a] !== sitOutCount[b]) return sitOutCount[a] - sitOutCount[b];
+            const aAdd = picked.reduce((t, p) => t + coByeCount[a][p], 0);
+            const bAdd = picked.reduce((t, p) => t + coByeCount[b][p], 0);
+            if (aAdd !== bAdd) return aAdd - bAdd;
+            if (coByeScore[a] !== coByeScore[b]) return coByeScore[a] - coByeScore[b];
+            // Random among equals: gives the multi-start variance so it can find a
+            // fully co-bye-diverse layout (bye spacing is scored separately).
+            return randKeys[a] - randKeys[b];
+          });
+          picked.push(avail.shift());
+        }
+        return picked;
+      };
       sitOuts = new Set([
-        ...malesByPriority.slice(0, bestSitM),
-        ...femalesByPriority.slice(0, bestSitF)
+        ...pickSitters(malesByPriority, bestSitM),
+        ...pickSitters(femalesByPriority, bestSitF),
       ]);
     } else {
       sitOuts = new Set();
@@ -284,7 +343,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
     // subset to minimize partner repeats while preserving never-met
     // pairs for opponent encounters, and avoiding recent courtmates.
     if (poolM.length > 0 && poolF.length > 0) {
-      const mfPairs = greedyBipartiteMatch(poolM, poolF, partnerCount, opponentCount, recentCourt);
+      const mfPairs = greedyBipartiteMatch(poolM, poolF, partnerCount, opponentCount, recentCourt, prev1Partner);
       const matchedM = new Set(mfPairs.map(p => p[0]));
       const matchedF = new Set(mfPairs.map(p => p[1]));
 
@@ -337,9 +396,12 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
         }
       }
 
-      // Proactively release MF pairs to same-gender when the unique MF
-      // partner pool is running low, preventing forced repeats in later rounds.
-      if (mfPairs.length >= 2) {
+      // Proactively release MF pairs to same-gender when the unique MF partner
+      // pool is running low, preventing forced repeats in later rounds. Skipped
+      // when preferMixed is on: mixed courts are then paramount over partner
+      // variety, so we keep the maximal MF matching and let same-gender courts
+      // arise only from genuine on-court overflow (never as chosen segregation).
+      if (!preferMixed && mfPairs.length >= 2) {
         // "Fresh" = never partnered (partnerCount === 0). In long schedules
         // where zero-repeats is impossible, also consider least-repeated pairs.
         let globalMinPartnerCount = Infinity;
@@ -384,15 +446,18 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
 
       for (const pair of mfPairs) partnerships.push(pair);
       if (unmatchedM.length > 0) {
-        for (const pair of greedySameGenderMatch(unmatchedM, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
+        for (const pair of greedySameGenderMatch(unmatchedM, partnerCount, opponentCount, recentCourt, prev1Partner)) partnerships.push(pair);
       }
       if (unmatchedF.length > 0) {
-        for (const pair of greedySameGenderMatch(unmatchedF, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
+        for (const pair of greedySameGenderMatch(unmatchedF, partnerCount, opponentCount, recentCourt, prev1Partner)) partnerships.push(pair);
       }
     } else {
       const pool = poolM.length > 0 ? poolM : poolF;
-      for (const pair of greedySameGenderMatch(pool, partnerCount, opponentCount, recentCourt)) partnerships.push(pair);
+      for (const pair of greedySameGenderMatch(pool, partnerCount, opponentCount, recentCourt, prev1Partner)) partnerships.push(pair);
     }
+
+    // Keep MM/FF team counts even so court grouping never has to make an MM-vs-FF court.
+    fixGenderTeamParity(partnerships, genders, partnerCount);
 
     // =========================================================
     // PHASE 3: Court Grouping (Pair partnerships into courts)
@@ -474,7 +539,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
 // augmenting paths (Kuhn's algorithm), then fill remaining greedily.
 // Zero partner repeats whenever mathematically possible.
 // -----------------------------------------------------------------
-function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recentCourt) {
+function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recentCourt, prev1Partner) {
   const nm = males.length, nf = females.length;
   const target = Math.min(nm, nf);
 
@@ -483,7 +548,8 @@ function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recen
     const pw = partnerCount[m][f];
     const neverOpp = opponentCount[m][f] === 0 ? SCHEDULE_WEIGHTS.NEVER_MET_BONUS_EDGE : 0;
     const recentSame = recentCourt[m][f] > 0 ? SCHEDULE_WEIGHTS.RECENT_SAME_COURT_EDGE : 0;
-    return pw * SCHEDULE_WEIGHTS.PARTNER_REPEAT_EDGE + recentSame + neverOpp;
+    const consec = prev1Partner && prev1Partner[m][f] ? SCHEDULE_WEIGHTS.CONSEC_PARTNER_EDGE : 0;
+    return pw * SCHEDULE_WEIGHTS.PARTNER_REPEAT_EDGE + consec + recentSame + neverOpp;
   }
 
   // Precompute edge weights once and collect the distinct values in
@@ -537,7 +603,7 @@ function greedyBipartiteMatch(males, females, partnerCount, opponentCount, recen
 // Same-gender matching: brute-force enumerate all perfect matchings
 // for small pools (≤12), greedy fallback for larger.
 // -----------------------------------------------------------------
-function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt) {
+function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt, prev1Partner) {
   const n = players.length;
   const target = Math.floor(n / 2);
   if (target === 0) return [];
@@ -547,7 +613,8 @@ function greedySameGenderMatch(players, partnerCount, opponentCount, recentCourt
     const pw = partnerCount[pa][pb];
     const neverOpp = opponentCount[pa][pb] === 0 ? SCHEDULE_WEIGHTS.NEVER_MET_BONUS_EDGE : 0;
     const recentSame = recentCourt[pa][pb] > 0 ? SCHEDULE_WEIGHTS.RECENT_SAME_COURT_EDGE : 0;
-    return pw * SCHEDULE_WEIGHTS.PARTNER_REPEAT_EDGE + recentSame + neverOpp;
+    const consec = prev1Partner && prev1Partner[pa][pb] ? SCHEDULE_WEIGHTS.CONSEC_PARTNER_EDGE : 0;
+    return pw * SCHEDULE_WEIGHTS.PARTNER_REPEAT_EDGE + consec + recentSame + neverOpp;
   }
 
   if (n <= 20) {
@@ -787,6 +854,7 @@ function scoreSchedule(result, n, genders) {
   // the per-round recentCourt mechanism cannot fully prevent on its own.
   let consecCourtmate = 0;
   let maxCourtmateStreak = 0;
+  let consecPartner = 0;
   const _pairStreak = new Map();
 
   for (let ri = 0; ri < rounds.length; ri++) {
@@ -820,6 +888,20 @@ function scoreSchedule(result, n, genders) {
     // Count role flips: partner↔opponent transitions within 2 rounds.
     // Only counts when a pair's relationship CHANGES (not same-role repeats).
     if (ri === 0) continue;
+
+    // Back-to-back partnerships: the same pair partnered in the immediately
+    // previous round. This is a hard-rule violation and should always be 0.
+    const _prev1Partners = new Set();
+    const _pk1 = (a, b) => (a < b ? a + ',' + b : b + ',' + a);
+    for (const c of rounds[ri - 1].courts) {
+      _prev1Partners.add(_pk1(c.teamA[0], c.teamA[1]));
+      _prev1Partners.add(_pk1(c.teamB[0], c.teamB[1]));
+    }
+    for (const c of rounds[ri].courts) {
+      if (_prev1Partners.has(_pk1(c.teamA[0], c.teamA[1]))) consecPartner++;
+      if (_prev1Partners.has(_pk1(c.teamB[0], c.teamB[1]))) consecPartner++;
+    }
+
     const prevPartners = new Set();
     const prevOpponents = new Set();
     for (let back = 1; back <= 2 && ri - back >= 0; back++) {
@@ -845,11 +927,16 @@ function scoreSchedule(result, n, genders) {
     }
   }
 
-  return { genderBadCourts, byeSpread, maxMidByeSpread, maxCoBye, partnerToOpp, maxOpp, neverMet, totalOppExcess, maxPartner, totalPartnerExcess, maxCourt, totalCourtExcess, consecCourtmate, maxCourtmateStreak };
+  return { genderBadCourts, consecPartner, byeSpread, maxMidByeSpread, maxCoBye, partnerToOpp, maxOpp, neverMet, totalOppExcess, maxPartner, totalPartnerExcess, maxCourt, totalCourtExcess, consecCourtmate, maxCourtmateStreak };
 }
 
 function compareScores(a, b) {
   if (a.genderBadCourts !== b.genderBadCourts) return a.genderBadCourts - b.genderBadCourts;
+  // Hard rule: never the same partner two rounds in a row (ranked above total
+  // partner repeats — spacing a forced repeat out matters more than the count).
+  const aConsecP = a.consecPartner || 0;
+  const bConsecP = b.consecPartner || 0;
+  if (aConsecP !== bConsecP) return aConsecP - bConsecP;
   // Zero partner repeats is the top priority after gender
   if (a.maxPartner !== b.maxPartner) return a.maxPartner - b.maxPartner;
   // No player should share a court with the same person in consecutive rounds

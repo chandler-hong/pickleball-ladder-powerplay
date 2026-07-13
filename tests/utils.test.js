@@ -1,7 +1,7 @@
 // Unit tests for js/utils.js pure helpers.
 // Run: node tests/utils.test.js
 
-const { csvCell, guessGender, shuffle, pickRandomNames } = require('../js/utils.js');
+const { csvCell, guessGender, shuffle, pickRandomNames, pickleballResult, pickleballScoreError } = require('../js/utils.js');
 
 let passed = 0;
 let failed = 0;
@@ -73,6 +73,43 @@ test('pickRandomNames: count, uniqueness, valid genders, min 2 of each', () => {
     const f = picks.filter(p => p.gender === 'F').length;
     assert(f >= 2 && f <= count - 2, `count ${count}: at least 2 of each gender (got ${f}F)`);
   }
+});
+
+test('pickleballResult — win by 1 (first to 11)', () => {
+  assert(pickleballResult(11, 0, 1) === 'A', '11-0 -> A');
+  assert(pickleballResult(11, 9, 1) === 'A', '11-9 -> A');
+  assert(pickleballResult(11, 10, 1) === 'A', '11-10 -> A (win by 1 allowed)');
+  assert(pickleballResult(9, 11, 1) === 'B', '9-11 -> B');
+  assert(pickleballResult(10, 8, 1) === null, '10-8 unfinished -> null');
+  assert(pickleballResult(12, 10, 1) === null, '12-10 invalid past 11 -> null');
+  assert(pickleballResult(11, 11, 1) === null, 'tie -> null');
+  assert(pickleballResult(NaN, 5, 1) === null, 'NaN -> null');
+});
+
+test('pickleballResult — win by 2 (to 11, no cap)', () => {
+  assert(pickleballResult(11, 9, 2) === 'A', '11-9 -> A');
+  assert(pickleballResult(11, 0, 2) === 'A', '11-0 -> A');
+  assert(pickleballResult(11, 10, 2) === null, '11-10 in progress -> null');
+  assert(pickleballResult(12, 10, 2) === 'A', '12-10 -> A');
+  assert(pickleballResult(13, 11, 2) === 'A', '13-11 -> A');
+  assert(pickleballResult(15, 13, 2) === 'A', '15-13 -> A');
+  assert(pickleballResult(12, 11, 2) === null, '12-11 in progress -> null');
+  assert(pickleballResult(13, 9, 2) === null, '13-9 impossible -> null');
+  assert(pickleballResult(10, 8, 2) === null, '10-8 unfinished -> null');
+});
+
+test('pickleballScoreError — flags impossible, allows unfinished', () => {
+  assert(pickleballScoreError(11, 5, 1) === null, 'wb1 11-5 valid, no error');
+  assert(pickleballScoreError(7, 4, 1) === null, 'wb1 7-4 unfinished, no error');
+  assert(pickleballScoreError(12, 5, 1) !== null, 'wb1 12-5 error (past 11)');
+  assert(pickleballScoreError(5, 5, 1) !== null, 'tie error');
+  assert(pickleballScoreError(-1, 5, 1) !== null, 'negative error');
+  assert(pickleballScoreError(11, 10, 2) === null, 'wb2 11-10 in progress, no error');
+  assert(pickleballScoreError(12, 11, 2) === null, 'wb2 12-11 in progress, no error');
+  assert(pickleballScoreError(15, 13, 2) === null, 'wb2 15-13 valid, no error');
+  assert(pickleballScoreError(13, 9, 2) !== null, 'wb2 13-9 error (>2 lead past 11)');
+  assert(pickleballScoreError(20, 5, 2) !== null, 'wb2 20-5 error');
+  assert(pickleballScoreError(NaN, NaN, 2) === null, 'blank -> no error');
 });
 
 console.log('\n' + '='.repeat(60));

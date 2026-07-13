@@ -21,6 +21,10 @@ function saveState() {
     roundWinners,
     // Also save the full generateSchedule result for stats
     fullResult: lastFullResult || null,
+    rrRoundTimer: rrRoundTimer || null,
+    rrScoringMode,
+    rrWinBy,
+    roundScores,
   };
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
 }
@@ -38,6 +42,13 @@ function restoreState() {
     document.getElementById('numRounds').value = state.numRounds || 10;
     document.getElementById('preferMixed').checked = state.preferMixed !== false;
 
+    // Restore Round-Robin scoring prefs + entered scores (before renderSchedule
+    // so the schedule renders in the right mode with scores prefilled).
+    rrScoringMode = (state.rrScoringMode === 'scores') ? 'scores' : 'winner';
+    rrWinBy = (state.rrWinBy === 2) ? 2 : 1;
+    roundScores = state.roundScores || {};
+    renderRRScoringControls();
+
     // Restore grids (skipSave=true to avoid overwriting restored data)
     playerData = state.playerData || [];
     courtData = state.courtData || [];
@@ -49,10 +60,12 @@ function restoreState() {
       scheduleCourtNames = state.scheduleCourtNames || [];
       lastFullResult = state.fullResult || null;
       roundNamesMap = state.roundNamesMap || {};
+      rrRoundTimer = state.rrRoundTimer || null; // set before renderSchedule so it's preserved
       renderSchedule(state.scheduleResult, state.scheduleNames, scheduleCourtNames, !!state.roundNamesMap);
       if (lastFullResult) renderStats(lastFullResult, state.scheduleNames);
       roundWinners = state.roundWinners || {};
       updateRoundStates();
+      resumeRRTimerOnRestore();
       document.getElementById('output').style.display = 'block';
     }
 

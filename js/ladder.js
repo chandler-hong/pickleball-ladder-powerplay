@@ -248,11 +248,16 @@ function buildLadderPlayerGrid() {
     if (i < ladderPlayerData.length) {
       document.getElementById(`lp${i}`).value = ladderPlayerData[i].name;
       if (ladderPlayerData[i].gender === 'F') document.getElementById(`lg${i}f`).checked = true;
+      if (ladderPlayerData[i].genderManual) div.dataset.genderManual = '1';
     }
     document.getElementById(`lp${i}`).addEventListener('input', function() {
       this.classList.remove('input-error');
-      const g = guessGender(this.value);
-      if (g) document.getElementById(`lg${this.id.slice(2)}${g.toLowerCase()}`).checked = true;
+      const row = this.parentElement;
+      if (!this.value.trim()) row.dataset.genderManual = ''; // cleared: allow auto-detect again
+      if (this.value.trim() && row.dataset.genderManual !== '1') {
+        const g = guessGender(this.value);
+        if (g) document.getElementById(`lg${this.id.slice(2)}${g.toLowerCase()}`).checked = true;
+      }
 
       // Live substitution: update current round if ladder is active
       const idx = parseInt(this.id.slice(2));
@@ -284,10 +289,12 @@ function buildLadderPlayerGrid() {
       saveLadderPlayerData();
     });
     document.getElementById(`lg${i}m`).addEventListener('change', () => {
+      document.getElementById(`lp${i}`).parentElement.dataset.genderManual = '1';
       saveLadderPlayerData();
       buildLadderCourtAssignments();
     });
     document.getElementById(`lg${i}f`).addEventListener('change', () => {
+      document.getElementById(`lp${i}`).parentElement.dataset.genderManual = '1';
       saveLadderPlayerData();
       buildLadderCourtAssignments();
     });
@@ -1261,7 +1268,7 @@ function saveLadderPlayerData() {
   for (let i = 0; i < getLadderPlayerCount(); i++) {
     const el = document.getElementById(`lp${i}`);
     const gf = document.getElementById(`lg${i}f`);
-    if (el) ladderPlayerData.push({ name: el.value, gender: gf && gf.checked ? 'F' : 'M' });
+    if (el) ladderPlayerData.push({ name: el.value, gender: gf && gf.checked ? 'F' : 'M', genderManual: el.parentElement.dataset.genderManual === '1' });
   }
   saveLadderState();
 }

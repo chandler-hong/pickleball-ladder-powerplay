@@ -17,6 +17,42 @@ function csvCell(value) {
   if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
   return s;
 }
+
+// --- Pickleball score validation (shared by the score-entry modes) ---
+// Games play to 11. winBy is 1 (first to 11) or 2 (must lead by 2, no upper cap).
+// Returns 'A' if a beats b, 'B' if b beats a, or null when (a, b) is not a valid
+// FINAL score (tied, impossible, or a game still in progress).
+function pickleballResult(a, b, winBy) {
+  if (isNaN(a) || isNaN(b) || a < 0 || b < 0 || a === b) return null;
+  const hi = Math.max(a, b), lo = Math.min(a, b), lead = a > b ? 'A' : 'B';
+  if (winBy === 2) {
+    if (hi === 11 && lo <= 9) return lead;      // 11-0 .. 11-9
+    if (hi >= 12 && hi - lo === 2) return lead;  // 12-10, 13-11, 15-13, ...
+    return null;                                 // 11-10, 12-11, or unfinished
+  }
+  // winBy 1 (first to 11): the winner has exactly 11.
+  if (hi === 11 && lo <= 10) return lead;
+  return null;
+}
+
+// Returns a human-readable message for an IMPOSSIBLE score, else null. A score
+// that is merely unfinished (leader below the win threshold) is NOT an error —
+// it is eligible for "Complete Game Early". Callers should only surface the
+// message once both score fields are filled in.
+function pickleballScoreError(a, b, winBy) {
+  if (isNaN(a) || isNaN(b)) return null;
+  if (a < 0 || b < 0) return 'Scores cannot be negative';
+  if (a === b) return 'Scores cannot be tied';
+  const hi = Math.max(a, b), lo = Math.min(a, b), lead = hi - lo;
+  if (winBy === 2) {
+    // Past 11 a game ends the instant a team leads by 2, so a >2 lead is impossible.
+    if (hi > 11 && lead > 2) return 'After 11, a game ends at a 2-point lead (e.g. 12\u201310, 13\u201311)';
+    return null;
+  }
+  // winBy 1: the game stops at 11, so no score can exceed 11.
+  if (hi > 11) return 'Games play to 11 \u2014 the winner should have exactly 11 (or switch to \u201CWin by 2\u201D)';
+  return null;
+}
 const FEMALE_NAMES = new Set([
   // --- English / American ---
   'abby','abigail','ada','adele','adeline','adriana','adrienne','agnes','aileen','aimee',
@@ -758,5 +794,5 @@ function pickRandomNames(count) {
 // Node/CommonJS export for tests. Guarded so the browser (where `module`
 // is undefined) is unaffected.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { csvCell, guessGender, shuffle, pickRandomNames, STATE_SCHEMA_VERSION };
+  module.exports = { csvCell, guessGender, shuffle, pickRandomNames, STATE_SCHEMA_VERSION, pickleballResult, pickleballScoreError };
 }

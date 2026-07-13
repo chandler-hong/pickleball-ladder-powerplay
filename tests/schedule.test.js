@@ -237,6 +237,130 @@ test('repairSchedule2opt does not introduce bad invariants', () => {
   resetScheduleRng();
 });
 
+test('Uneven gender pools — no MM-vs-FF and no 3M/1F courts', () => {
+  // Regression: with a lopsided pool (e.g. 6M/4F on 2 courts) the partner-repeat
+  // release heuristic could leave an odd number of same-gender teams (e.g. 3 MM +
+  // 1 FF), forcing a banned MM-vs-FF court. All-MM / all-FF courts are allowed;
+  // MM-vs-FF and 3/1 are not.
+  const cases = [
+    { p: 10, c: 2, r: 10, m: 6, f: 4 },
+    { p: 16, c: 4, r: 10, m: 10, f: 6 },
+    { p: 12, c: 2, r: 10, m: 8, f: 4 },
+  ];
+  for (const cfg of cases) {
+    const genders = makeGenders(cfg.m, cfg.f);
+    for (const seed of [1, 7, 42, 100, 2024]) {
+      setScheduleRng(mulberry32(seed));
+      const result = generateSchedule(cfg.p, cfg.c, cfg.r, genders, true);
+      checkNoDuplicates(result, cfg.p);
+      const { mmVsFf, threeOneSplit } = countGenderViolations(result, genders);
+      assert(mmVsFf === 0, `${cfg.m}M/${cfg.f}F ${cfg.c}c seed ${seed}: MM-vs-FF should be 0 (got ${mmVsFf})`);
+      assert(threeOneSplit === 0, `${cfg.m}M/${cfg.f}F ${cfg.c}c seed ${seed}: 3/1 should be 0 (got ${threeOneSplit})`);
+    }
+  }
+  resetScheduleRng();
+});
+
+test('Prefer-mixed uneven pools — no fully-segregated rounds', () => {
+  // With preferMixed on, mixed courts take priority: a round must never pair an
+  // all-men court with an all-women court (that means mixing was possible and
+  // skipped). Lone all-men OR all-women courts are fine (a gender in excess).
+  const cases = [
+    { p: 10, c: 2, r: 10, m: 6, f: 4 },
+    { p: 12, c: 2, r: 10, m: 8, f: 4 },
+    { p: 16, c: 4, r: 10, m: 10, f: 6 },
+    { p: 16, c: 4, r: 10, m: 6, f: 10 },
+  ];
+  for (const cfg of cases) {
+    const genders = makeGenders(cfg.m, cfg.f);
+    for (const seed of [1, 7, 42, 100]) {
+      setScheduleRng(mulberry32(seed));
+      const result = generateSchedule(cfg.p, cfg.c, cfg.r, genders, true);
+      let segRounds = 0;
+      for (const round of result.schedule) {
+        let hasAllM = false, hasAllF = false;
+        for (const court of round.courts) {
+          const mc = [...court.teamA, ...court.teamB].filter(p => genders[p] === 'M').length;
+          if (mc === 4) hasAllM = true;
+          else if (mc === 0) hasAllF = true;
+        }
+        if (hasAllM && hasAllF) segRounds++;
+      }
+      assert(segRounds === 0, `${cfg.m}M/${cfg.f}F ${cfg.c}c seed ${seed}: fully-segregated rounds should be 0 (got ${segRounds})`);
+    }
+  }
+  resetScheduleRng();
+});
+
+test('No back-to-back partnerships (same pair never partners in consecutive rounds)', () => {
+  // Hard rule: a pair may partner more than once (mixing is prioritized over
+  // zero-repeats on lopsided pools) but NEVER in two consecutive rounds.
+  const partnerKeys = round => {
+    const s = new Set();
+    for (const c of round.courts) {
+      s.add(Math.min(c.teamA[0], c.teamA[1]) + ',' + Math.max(c.teamA[0], c.teamA[1]));
+      s.add(Math.min(c.teamB[0], c.teamB[1]) + ',' + Math.max(c.teamB[0], c.teamB[1]));
+    }
+    return s;
+  };
+  const cases = [
+    { p: 10, c: 2, r: 10, m: 6, f: 4 },
+    { p: 12, c: 2, r: 10, m: 8, f: 4 },
+    { p: 16, c: 4, r: 10, m: 8, f: 8 },
+  ];
+  for (const cfg of cases) {
+    const genders = makeGenders(cfg.m, cfg.f);
+    for (const seed of [1, 7, 42, 100, 2024]) {
+      setScheduleRng(mulberry32(seed));
+      const result = generateSchedule(cfg.p, cfg.c, cfg.r, genders, true);
+      let consec = 0;
+      for (let ri = 1; ri < result.schedule.length; ri++) {
+        const prev = partnerKeys(result.schedule[ri - 1]);
+        for (const k of partnerKeys(result.schedule[ri])) if (prev.has(k)) consec++;
+      }
+      assert(consec === 0, `${cfg.m}M/${cfg.f}F seed ${seed}: back-to-back partnerships should be 0 (got ${consec})`);
+    }
+  }
+  resetScheduleRng();
+});
+
+test('Bye partners are varied — no pair sits out together more than once (small-bye pools)', () => {
+  // The same two people should not be paired on byes every time. Where the bye
+  // pool is small enough for it to be possible, no pair co-sits more than once,
+  // while byes stay fair (spread <= 1) and there are no back-to-back byes.
+  const maxCoBye = (result, n) => {
+    const m = Array.from({ length: n }, () => new Array(n).fill(0));
+    for (const round of result.schedule) {
+      const o = round.sitOuts;
+      for (let i = 0; i < o.length; i++) for (let j = i + 1; j < o.length; j++) { m[o[i]][o[j]]++; m[o[j]][o[i]]++; }
+    }
+    let mx = 0;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (m[i][j] > mx) mx = m[i][j];
+    return mx;
+  };
+  const backToBackByes = result => {
+    let n = 0;
+    for (let r = 1; r < result.schedule.length; r++) {
+      const prev = new Set(result.schedule[r - 1].sitOuts);
+      for (const p of result.schedule[r].sitOuts) if (prev.has(p)) n++;
+    }
+    return n;
+  };
+  // Uses the app path (generateBestSchedule) since the multi-start selects the
+  // most bye-diverse of many candidate constructions. Asserted on the small
+  // lopsided pool that used to produce the degenerate periodic pattern.
+  const cfg = { p: 10, c: 2, r: 10, m: 6, f: 4 };
+  const genders = makeGenders(cfg.m, cfg.f);
+  for (const seed of [1, 7, 42, 100, 2024]) {
+    setScheduleRng(mulberry32(seed));
+    const result = generateBestSchedule(cfg.p, cfg.c, cfg.r, genders, true, { timeBudgetMs: 800 });
+    assert(maxCoBye(result, cfg.p) <= 1, `${cfg.m}M/${cfg.f}F seed ${seed}: no pair should sit out together >1 time (got ${maxCoBye(result, cfg.p)})`);
+    assert(byeSpread(result) <= 1, `${cfg.m}M/${cfg.f}F seed ${seed}: byeSpread should stay <= 1 (got ${byeSpread(result)})`);
+    assert(backToBackByes(result) === 0, `${cfg.m}M/${cfg.f}F seed ${seed}: no back-to-back byes (got ${backToBackByes(result)})`);
+  }
+  resetScheduleRng();
+});
+
 // --- Run --------------------------------------------------------------
 
 console.log('\n' + '='.repeat(60));

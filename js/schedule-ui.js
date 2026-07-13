@@ -7,6 +7,14 @@ let scheduleNames = null;
 let roundNamesMap = {};  // roundNumber -> [...names], for per-round substitution tracking
 let scheduleCourtNames = [];
 let lastFullResult = null;
+// Round-Robin per-round timer (same widget/behavior as the ladder timer).
+let rrRoundTimer = null;   // { durationSec, startedAt, pausedRemaining, expired, lastDurationSec }
+let rrTimerInterval = null;
+let rrCurrentRound = null;  // tracks the current round to auto-reset the timer on advance
+// Round-Robin result entry. 'winner' = tap a team (default); 'scores' = enter game scores.
+let rrScoringMode = 'winner';
+let rrWinBy = 1;            // 1 = first to 11; 2 = must win by 2 (to 11, no cap)
+let roundScores = {};       // { [round]: { [courtIdx]: { a, b, early } } }
 
 // --- Dynamic grid builders ---
 let currentPlayerCount = 15;
@@ -35,30 +43,39 @@ function buildPlayerGrid(count, skipSave) {
     if (i < playerData.length) {
       document.getElementById(`p${i}`).value = playerData[i].name;
       if (playerData[i].gender === 'F') document.getElementById(`g${i}f`).checked = true;
+      if (playerData[i].genderManual) div.dataset.genderManual = '1';
     }
     document.getElementById(`p${i}`).addEventListener('input', function() {
       this.classList.remove('input-error');
-      const g = guessGender(this.value);
       const idx = parseInt(this.id.slice(1));
-      const toggle = this.parentElement.querySelector('.gender-toggle');
-      if (g) {
-        document.getElementById(`g${idx}${g.toLowerCase()}`).checked = true;
+      const row = this.parentElement;
+      const toggle = row.querySelector('.gender-toggle');
+      const removeHint = () => { const h = row.querySelector('.gender-hint'); if (h) h.remove(); };
+      if (!this.value.trim()) {
+        // Cleared: re-enable auto-detect for the next name and drop any hint.
+        row.dataset.genderManual = '';
         toggle.classList.remove('gender-undetected');
-        const hint = this.parentElement.querySelector('.gender-hint');
-        if (hint) hint.remove();
-        checkGenderWarning();
-      } else if (this.value.trim()) {
-        toggle.classList.add('gender-undetected');
-        if (!this.parentElement.querySelector('.gender-hint')) {
-          const hint = document.createElement('div');
-          hint.className = 'gender-hint';
-          hint.textContent = 'Gender not auto-detected — please verify M/F toggle';
-          this.parentElement.appendChild(hint);
-        }
+        removeHint();
+      } else if (row.dataset.genderManual === '1') {
+        // Gender was set by hand — never let auto-detect override it.
+        toggle.classList.remove('gender-undetected');
+        removeHint();
       } else {
-        toggle.classList.remove('gender-undetected');
-        const hint = this.parentElement.querySelector('.gender-hint');
-        if (hint) hint.remove();
+        const g = guessGender(this.value);
+        if (g) {
+          document.getElementById(`g${idx}${g.toLowerCase()}`).checked = true;
+          toggle.classList.remove('gender-undetected');
+          removeHint();
+          checkGenderWarning();
+        } else {
+          toggle.classList.add('gender-undetected');
+          if (!row.querySelector('.gender-hint')) {
+            const hint = document.createElement('div');
+            hint.className = 'gender-hint';
+            hint.textContent = 'Gender not auto-detected — please verify M/F toggle';
+            row.appendChild(hint);
+          }
+        }
       }
       updatePlayerGenderCount();
       // Live-update schedule if one exists (substitution: only current + future rounds)
@@ -104,6 +121,7 @@ function buildPlayerGrid(count, skipSave) {
     const dismissHint = function() {
       const pi = this.name.slice(1);
       const row = document.getElementById(`p${pi}`).parentElement;
+      row.dataset.genderManual = '1'; // user set gender by hand — make it sticky
       const toggle = row.querySelector('.gender-toggle');
       toggle.classList.remove('gender-undetected');
       const hint = row.querySelector('.gender-hint');
@@ -165,7 +183,7 @@ function savePlayerData() {
   for (let i = 0; i < currentPlayerCount; i++) {
     const el = document.getElementById(`p${i}`);
     const gf = document.getElementById(`g${i}f`);
-    if (el) playerData.push({ name: el.value, gender: gf && gf.checked ? 'F' : 'M' });
+    if (el) playerData.push({ name: el.value, gender: gf && gf.checked ? 'F' : 'M', genderManual: el.parentElement.dataset.genderManual === '1' });
   }
 }
 
@@ -434,8 +452,124 @@ function pickWinner(roundNum, courtIdx, team) {
   } else {
     roundWinners[roundNum][courtIdx] = team;
   }
+  // A tap is authoritative for winner mode; drop any stale score for this court.
+  if (roundScores[roundNum]) delete roundScores[roundNum][courtIdx];
   updateRoundStates();
   saveState();
+}
+
+// --- Round-Robin score entry ---
+// The controls live in the Setup card (#rrScoringControls) so they sit near the
+// top, independent of whether a schedule has been generated yet.
+function rrScoringControlsHTML() {
+  const winnerActive = rrScoringMode !== 'scores';
+  return `<div class="rr-scoring-group">
+      <span class="rr-scoring-label">Results</span>
+      <div class="seg-toggle">
+        <button type="button" class="seg-btn ${winnerActive ? 'active' : ''}" onclick="setRRScoringMode('winner')">Pick winner</button>
+        <button type="button" class="seg-btn ${!winnerActive ? 'active' : ''}" onclick="setRRScoringMode('scores')">Enter scores</button>
+      </div>
+    </div>
+    <div class="rr-scoring-group"${winnerActive ? ' style="display:none;"' : ''}>
+      <span class="rr-scoring-label">Win by</span>
+      <div class="seg-toggle">
+        <button type="button" class="seg-btn ${rrWinBy === 1 ? 'active' : ''}" onclick="setRRWinBy(1)">1</button>
+        <button type="button" class="seg-btn ${rrWinBy === 2 ? 'active' : ''}" onclick="setRRWinBy(2)">2</button>
+      </div>
+      <span class="rr-scoring-hint">${rrWinBy === 2 ? 'to 11, win by 2' : 'first to 11'}</span>
+    </div>`;
+}
+
+function renderRRScoringControls() {
+  const el = document.getElementById('rrScoringControls');
+  if (el) el.innerHTML = rrScoringControlsHTML();
+}
+
+function rerenderRRSchedule() {
+  if (!scheduleData) return;
+  renderSchedule({ schedule: scheduleData }, scheduleNames, scheduleCourtNames, true);
+}
+
+function setRRScoringMode(mode) {
+  rrScoringMode = (mode === 'scores') ? 'scores' : 'winner';
+  renderRRScoringControls();
+  rerenderRRSchedule();
+  saveState();
+}
+
+function setRRWinBy(n) {
+  rrWinBy = (n === 2) ? 2 : 1;
+  renderRRScoringControls();
+  rerenderRRSchedule();  // re-renders and re-validates every stored score under the new rule
+  saveState();
+}
+
+// Validates a court's two score inputs under the current win-by rule, updates
+// the inline error + "Complete Game Early" affordance, and records the score +
+// derived winner. UI/state sync only (no re-render, no save) so it can run in a
+// loop during rendering.
+function rrSyncCourt(round, ci) {
+  const aEl = document.getElementById(`rs${round}c${ci}a`);
+  const bEl = document.getElementById(`rs${round}c${ci}b`);
+  if (!aEl || !bEl) return;
+  const errSlot = document.getElementById(`rrErr${round}c${ci}`);
+  const earlyBtn = document.getElementById(`rrEarly${round}c${ci}`);
+  aEl.classList.remove('input-error');
+  bEl.classList.remove('input-error');
+  if (errSlot) errSlot.innerHTML = '';
+
+  const a = parseInt(aEl.value, 10);
+  const b = parseInt(bEl.value, 10);
+  const bothEntered = aEl.value.trim() !== '' && bEl.value.trim() !== '' && !isNaN(a) && !isNaN(b);
+
+  const prev = (roundScores[round] && roundScores[round][ci]) || null;
+  let early = !!(prev && prev.early);
+
+  if (!bothEntered) {
+    // Incomplete entry: drop this court's score but leave any tap-set winner intact.
+    if (roundScores[round]) delete roundScores[round][ci];
+    if (earlyBtn) earlyBtn.style.display = 'none';
+    return;
+  }
+
+  const err = pickleballScoreError(a, b, rrWinBy);
+  const validFinal = pickleballResult(a, b, rrWinBy); // 'A' | 'B' | null
+  if (validFinal !== null) early = false;              // a real result supersedes early completion
+  const inProgressLeader = validFinal === null && !err && a !== b;
+
+  if (err) {
+    aEl.classList.add('input-error');
+    bEl.classList.add('input-error');
+    if (errSlot) errSlot.innerHTML = `<div class="ladder-score-error">${esc(err)}</div>`;
+  }
+
+  let winner = validFinal;
+  if (early && inProgressLeader) winner = a > b ? 'A' : 'B';
+
+  if (earlyBtn) {
+    earlyBtn.style.display = (inProgressLeader || early) ? '' : 'none';
+    earlyBtn.textContent = early ? 'Undo Early Completion' : 'Complete Game Early';
+    earlyBtn.classList.toggle('btn-early-active', early);
+  }
+
+  if (!roundScores[round]) roundScores[round] = {};
+  roundScores[round][ci] = { a, b, early };
+  if (!roundWinners[round]) roundWinners[round] = {};
+  roundWinners[round][ci] = winner; // null when invalid/unfinished → blocks round completion
+}
+
+function rrCheckCourtScore(round, ci) {
+  rrSyncCourt(round, ci);
+  updateRoundStates();
+  saveState();
+}
+
+function rrCompleteEarly(round, ci) {
+  if (!roundScores[round]) roundScores[round] = {};
+  const cur = roundScores[round][ci] || {};
+  cur.early = !cur.early;
+  roundScores[round][ci] = cur;
+  rrCheckCourtScore(round, ci);
 }
 
 function swapRRPartners(roundNum, courtIdx) {
@@ -470,6 +604,134 @@ function isRoundComplete(roundNum) {
   return true;
 }
 
+// --- Round-Robin round timer (same behavior as the ladder timer) ---
+function getRRTimerState() {
+  if (!rrRoundTimer) return 'idle';
+  const t = rrRoundTimer;
+  if (t.expired) return 'expired';
+  if (t.pausedRemaining !== null) return 'paused';
+  if (t.startedAt !== null) return 'running';
+  return 'idle';
+}
+function getRRTimerRemainingSec() {
+  if (!rrRoundTimer) return 0;
+  const t = rrRoundTimer;
+  if (t.expired) return 0;
+  if (t.pausedRemaining !== null) return t.pausedRemaining;
+  if (t.startedAt !== null) return Math.max(0, t.durationSec - (Date.now() - t.startedAt) / 1000);
+  return t.durationSec;
+}
+function stopRRTimerInterval() {
+  if (rrTimerInterval !== null) { clearInterval(rrTimerInterval); rrTimerInterval = null; }
+}
+function startRRTimerInterval() {
+  stopRRTimerInterval();
+  rrTimerInterval = setInterval(tickRRTimer, 500);
+}
+function tickRRTimer() {
+  if (!rrRoundTimer || rrRoundTimer.startedAt === null) { stopRRTimerInterval(); return; }
+  const remaining = rrRoundTimer.durationSec - (Date.now() - rrRoundTimer.startedAt) / 1000;
+  const display = document.getElementById('rrRoundTimerDisplay');
+  if (display) display.textContent = formatTimerMMSS(remaining);
+  if (remaining <= 0) expireRRTimer();
+}
+function startRRTimer() {
+  if (!rrRoundTimer) return;
+  const input = document.getElementById('rrRoundTimerMinutes');
+  const minutes = parseInt(input && input.value);
+  if (isNaN(minutes) || minutes < 1 || minutes > 60) {
+    if (input) { input.classList.add('input-error'); setTimeout(() => input.classList.remove('input-error'), 1200); }
+    return;
+  }
+  const seconds = minutes * 60;
+  rrRoundTimer.durationSec = seconds;
+  rrRoundTimer.lastDurationSec = seconds;
+  rrRoundTimer.startedAt = Date.now();
+  rrRoundTimer.pausedRemaining = null;
+  rrRoundTimer.expired = false;
+  renderRRRoundTimer();
+  startRRTimerInterval();
+  saveState();
+}
+function pauseRRTimer() {
+  if (!rrRoundTimer || rrRoundTimer.startedAt === null) return;
+  const t = rrRoundTimer;
+  t.pausedRemaining = Math.max(0, t.durationSec - (Date.now() - t.startedAt) / 1000);
+  t.startedAt = null;
+  stopRRTimerInterval();
+  renderRRRoundTimer();
+  saveState();
+}
+function resumeRRTimer() {
+  if (!rrRoundTimer || rrRoundTimer.pausedRemaining === null) return;
+  const t = rrRoundTimer;
+  t.durationSec = t.pausedRemaining;
+  t.startedAt = Date.now();
+  t.pausedRemaining = null;
+  renderRRRoundTimer();
+  startRRTimerInterval();
+  saveState();
+}
+function resetRRTimer() {
+  if (!rrRoundTimer) return;
+  stopRRTimerInterval();
+  rrRoundTimer = newRoundTimerState(rrRoundTimer.lastDurationSec || 600);
+  renderRRRoundTimer();
+  saveState();
+}
+function expireRRTimer() {
+  if (!rrRoundTimer) return;
+  const t = rrRoundTimer;
+  t.expired = true; t.startedAt = null; t.pausedRemaining = null;
+  stopRRTimerInterval();
+  renderRRRoundTimer();
+  saveState();
+}
+function resumeRRTimerOnRestore() {
+  if (!rrRoundTimer) return;
+  const t = rrRoundTimer;
+  if (t.expired || t.pausedRemaining !== null || t.startedAt === null) return;
+  const remaining = t.durationSec - (Date.now() - t.startedAt) / 1000;
+  if (remaining <= 0) {
+    t.expired = true; t.startedAt = null; t.pausedRemaining = null;
+    saveState(); renderRRRoundTimer(); return;
+  }
+  startRRTimerInterval();
+}
+function renderRRRoundTimer() {
+  const container = document.getElementById('rrRoundTimer');
+  if (!container || !rrRoundTimer) { if (container) container.innerHTML = ''; return; }
+  const t = rrRoundTimer;
+  const state = getRRTimerState();
+  const lastMin = Math.max(1, Math.round((t.lastDurationSec || 600) / 60));
+  let html = `<div class="round-timer round-timer-${state}">`;
+  if (state === 'idle') {
+    html += `<span class="round-timer-label">Round Timer</span>
+      <input type="number" class="round-timer-input" id="rrRoundTimerMinutes" min="1" max="60" value="${lastMin}">
+      <span class="round-timer-unit">min</span>
+      <button class="btn-timer btn-timer-start" id="rrRoundTimerStartBtn" type="button">Start</button>`;
+  } else {
+    html += `<span class="round-timer-label">Round Timer</span>
+      <span class="round-timer-display" id="rrRoundTimerDisplay">${formatTimerMMSS(getRRTimerRemainingSec())}</span>`;
+    if (state === 'paused') html += `<span class="round-timer-tag">paused</span>`;
+    if (state === 'running') html += `<button class="btn-timer btn-timer-pause" id="rrRoundTimerPauseBtn" type="button">Pause</button>`;
+    else if (state === 'paused') html += `<button class="btn-timer btn-timer-resume" id="rrRoundTimerResumeBtn" type="button">Resume</button>`;
+    html += `<button class="btn-timer btn-timer-reset" id="rrRoundTimerResetBtn" type="button">Reset</button>`;
+  }
+  html += `</div>`;
+  container.innerHTML = html;
+
+  const sb = document.getElementById('rrRoundTimerStartBtn'); if (sb) sb.addEventListener('click', startRRTimer);
+  const pb = document.getElementById('rrRoundTimerPauseBtn'); if (pb) pb.addEventListener('click', pauseRRTimer);
+  const rb = document.getElementById('rrRoundTimerResumeBtn'); if (rb) rb.addEventListener('click', resumeRRTimer);
+  const xb = document.getElementById('rrRoundTimerResetBtn'); if (xb) xb.addEventListener('click', resetRRTimer);
+  const mi = document.getElementById('rrRoundTimerMinutes');
+  if (mi) {
+    mi.addEventListener('input', function() { this.classList.remove('input-error'); });
+    mi.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); startRRTimer(); } });
+  }
+}
+
 function updateRoundStates() {
   // Find current round (first non-completed)
   let currentRound = null;
@@ -477,14 +739,26 @@ function updateRoundStates() {
     if (!isRoundComplete(i)) { currentRound = i; break; }
   }
 
+  // Auto-reset the round timer when the current round advances (mirrors the
+  // ladder timer resetting on each new round). Reset in place so the freshly
+  // built banner slot renders the idle timer below.
+  if (rrRoundTimer && rrCurrentRound !== null && currentRound !== rrCurrentRound) {
+    stopRRTimerInterval();
+    rrRoundTimer = newRoundTimerState(rrRoundTimer.lastDurationSec || 600);
+  }
+  rrCurrentRound = currentRound;
+
   // Update banner
   const banner = document.getElementById('currentRoundBanner');
   if (currentRound) {
     banner.innerHTML = `<span class="current-round-dot"></span>
-      <span class="current-round-text">Current Round: <span>${currentRound}</span> of ${totalRounds}</span>`;
+      <span class="current-round-text">Current Round: <span>${currentRound}</span> of ${totalRounds}</span>
+      <span class="current-round-timer-slot" id="rrRoundTimer"></span>`;
   } else {
     banner.innerHTML = `<span class="all-done-text">All ${totalRounds} rounds complete</span>`;
+    stopRRTimerInterval();
   }
+  renderRRRoundTimer();
 
   // Update round cards and team states
   for (let i = 1; i <= totalRounds; i++) {
@@ -516,48 +790,49 @@ function renderLeaderboard() {
 
   // Compute wins/losses keyed by (slotIndex, name) to avoid merging stats
   // when a substitute shares a name with a player in a different slot
-  const identityStats = {};  // "slotIdx:name" -> {name, wins, losses}
+  const identityStats = {};  // "slotIdx:name" -> {name, wins, losses, diff}
 
   for (const round of scheduleData) {
     const rw = roundWinners[round.round];
     if (!rw) continue;
     const rNames = roundNamesMap[round.round] || scheduleNames;
+    const rs = roundScores[round.round] || {};
     round.courts.forEach((court, ci) => {
       const w = rw[ci];
       if (!w) return;
       const winTeam = w === 'A' ? court.teamA : court.teamB;
       const loseTeam = w === 'A' ? court.teamB : court.teamA;
-      winTeam.forEach(p => {
+      const sc = rs[ci];
+      const margin = sc && sc.a != null && sc.b != null ? Math.abs(sc.a - sc.b) : 0;
+      const stat = p => {
         const key = p + ':' + rNames[p];
-        if (!identityStats[key]) identityStats[key] = { name: rNames[p], wins: 0, losses: 0 };
-        identityStats[key].wins++;
-      });
-      loseTeam.forEach(p => {
-        const key = p + ':' + rNames[p];
-        if (!identityStats[key]) identityStats[key] = { name: rNames[p], wins: 0, losses: 0 };
-        identityStats[key].losses++;
-      });
+        if (!identityStats[key]) identityStats[key] = { name: rNames[p], wins: 0, losses: 0, diff: 0 };
+        return identityStats[key];
+      };
+      winTeam.forEach(p => { const s = stat(p); s.wins++; s.diff += margin; });
+      loseTeam.forEach(p => { const s = stat(p); s.losses++; s.diff -= margin; });
     });
   }
   const playerStats = identityStats;
+  const anyScores = Object.keys(roundScores).some(r => roundScores[r] && Object.keys(roundScores[r]).length > 0);
 
   // Check if any results exist
   const totalGames = Object.values(playerStats).reduce((a, b) => a + b.wins, 0);
   if (totalGames === 0) {
     section.innerHTML = `<div class="leaderboard"><h2>Leaderboard</h2>
       <div class="card" style="text-align:center;padding:2rem;">
-        <span style="color:#4b5c72;font-size:0.85rem;">Select game winners to populate the leaderboard</span>
+        <span style="color:#4b5c72;font-size:0.85rem;">Select winners or enter scores to populate the leaderboard</span>
       </div></div>`;
     return;
   }
 
   // Build player rows sorted by win%, then wins, then fewer losses
   const players = Object.values(playerStats).map(s => ({
-    name: s.name, wins: s.wins, losses: s.losses,
+    name: s.name, wins: s.wins, losses: s.losses, diff: s.diff || 0,
     total: s.wins + s.losses,
     pct: (s.wins + s.losses) > 0 ? s.wins / (s.wins + s.losses) : 0
   }));
-  players.sort((a, b) => b.pct - a.pct || b.wins - a.wins || a.losses - b.losses);
+  players.sort((a, b) => b.pct - a.pct || (anyScores ? b.diff - a.diff : 0) || b.wins - a.wins || a.losses - b.losses);
 
   const medals = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
 
@@ -565,7 +840,7 @@ function renderLeaderboard() {
 
   let html = '<div class="leaderboard"><div class="schedule-header"><h2>Leaderboard</h2><button class="btn-export-pdf" onclick="exportPDF()">Export PDF</button><button class="btn-export-csv" onclick="exportCSV()">Export CSV</button></div>';
   html += '<table class="leaderboard-table"><thead><tr>';
-  html += '<th>Player</th><th>W</th><th>L</th><th>Win %</th><th class="lb-bar-cell"></th>';
+  html += '<th>Player</th><th>W</th><th>L</th><th>Win %</th>' + (anyScores ? '<th>Diff</th>' : '') + '<th class="lb-bar-cell"></th>';
   html += '</tr></thead><tbody>';
 
   players.forEach((p, idx) => {
@@ -580,6 +855,7 @@ function renderLeaderboard() {
       <td class="lb-wins">${p.wins}</td>
       <td class="lb-losses">${p.losses}</td>
       <td class="lb-pct">${p.total > 0 ? pct + '%' : '<span class="lb-empty">\u2014</span>'}</td>
+      ${anyScores ? `<td class="lb-diff ${p.diff > 0 ? 'lb-diff-pos' : p.diff < 0 ? 'lb-diff-neg' : ''}">${p.diff > 0 ? '+' : ''}${p.diff}</td>` : ''}
       <td class="lb-bar-cell"><div class="lb-bar">
         <div class="lb-bar-w" style="width:${wPct}%"></div>
         <div class="lb-bar-l" style="width:${lPct}%"></div>
@@ -597,12 +873,18 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
   numCourtsInSchedule = courtNames.length;
   if (!preserveWinners) {
     roundWinners = {};
+    roundScores = {};
     roundNamesMap = {};
     // Initialize per-round names from the original names
     for (let r = 1; r <= totalRounds; r++) {
       roundNamesMap[r] = [...names];
     }
+    // Fresh schedule → fresh round timer (keep the last chosen duration as default).
+    stopRRTimerInterval();
+    rrRoundTimer = newRoundTimerState(rrRoundTimer ? (rrRoundTimer.lastDurationSec || 600) : 600);
+    rrCurrentRound = null;
   }
+  if (!rrRoundTimer) rrRoundTimer = newRoundTimerState(600);
   scheduleData = result.schedule;
   scheduleNames = names;
 
@@ -622,23 +904,49 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
       <div class="courts">`;
 
     round.courts.forEach((court, ci) => {
+      const nameA = `<span class="serve-badge">SERVE</span>${esc(rNames[court.teamA[0]])} &amp; ${esc(rNames[court.teamA[1]])}`;
+      const nameB = `${esc(rNames[court.teamB[0]])} &amp; ${esc(rNames[court.teamB[1]])}`;
       html += `<div class="court">
         <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
           <div class="court-label" style="margin-bottom:0;">${esc(courtNames[ci])}</div>
           <button class="btn-swap" onclick="swapRRPartners(${round.round},${ci})">Swap Partners</button>
-        </div>
-        <div class="matchup">
-          <span class="team team-a" role="button" tabindex="0" id="r${round.round}c${ci}a" onclick="pickWinner(${round.round},${ci},'A')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickWinner(${round.round},${ci},'A')}"><span class="serve-badge">SERVE</span>${esc(rNames[court.teamA[0]])} &amp; ${esc(rNames[court.teamA[1]])}</span>
+        </div>`;
+      if (rrScoringMode === 'scores') {
+        const sc = (roundScores[round.round] && roundScores[round.round][ci]) || null;
+        const va = sc && sc.a != null ? sc.a : '';
+        const vb = sc && sc.b != null ? sc.b : '';
+        html += `<div class="ladder-matchup">
+          <div class="ladder-score-group">
+            <span class="team team-a" id="r${round.round}c${ci}a">${nameA}</span>
+            <input type="number" class="ladder-score-input" id="rs${round.round}c${ci}a" min="0" max="99" placeholder="0" inputmode="numeric" pattern="[0-9]*" value="${va}" onkeydown="return(event.key.length>1||/[0-9]/.test(event.key))" oninput="rrCheckCourtScore(${round.round},${ci})">
+          </div>
           <span class="vs">vs</span>
-          <span class="team team-b" role="button" tabindex="0" id="r${round.round}c${ci}b" onclick="pickWinner(${round.round},${ci},'B')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickWinner(${round.round},${ci},'B')}">${esc(rNames[court.teamB[0]])} &amp; ${esc(rNames[court.teamB[1]])}</span>
+          <div class="ladder-score-group">
+            <span class="team team-b" id="r${round.round}c${ci}b">${nameB}</span>
+            <input type="number" class="ladder-score-input" id="rs${round.round}c${ci}b" min="0" max="99" placeholder="0" inputmode="numeric" pattern="[0-9]*" value="${vb}" onkeydown="return(event.key.length>1||/[0-9]/.test(event.key))" oninput="rrCheckCourtScore(${round.round},${ci})">
+          </div>
         </div>
-      </div>`;
+        <button class="btn-early" id="rrEarly${round.round}c${ci}" onclick="rrCompleteEarly(${round.round},${ci})" style="display:none;">Complete Game Early</button>
+        <div class="rr-score-error-slot" id="rrErr${round.round}c${ci}"></div>`;
+      } else {
+        html += `<div class="matchup">
+          <span class="team team-a" role="button" tabindex="0" id="r${round.round}c${ci}a" onclick="pickWinner(${round.round},${ci},'A')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickWinner(${round.round},${ci},'A')}">${nameA}</span>
+          <span class="vs">vs</span>
+          <span class="team team-b" role="button" tabindex="0" id="r${round.round}c${ci}b" onclick="pickWinner(${round.round},${ci},'B')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickWinner(${round.round},${ci},'B')}">${nameB}</span>
+        </div>`;
+      }
+      html += `</div>`;
     });
 
     html += '</div></div>';
   }
 
   section.innerHTML = html;
+  if (rrScoringMode === 'scores') {
+    for (const r of result.schedule) {
+      for (let ci = 0; ci < numCourtsInSchedule; ci++) rrSyncCourt(r.round, ci);
+    }
+  }
   updateRoundStates();
 }
 
@@ -673,13 +981,15 @@ function downloadCSV(filename, csv) {
 
 function exportCSV() {
   let csv = '';
+  const anyScores = Object.keys(roundScores).some(r => roundScores[r] && Object.keys(roundScores[r]).length > 0);
 
   // Leaderboard
   if (rrLeaderboardData.length) {
-    csv += 'LEADERBOARD\nRank,Player,W,L,Win %\n';
+    csv += 'LEADERBOARD\nRank,Player,W,L,Win %' + (anyScores ? ',Diff' : '') + '\n';
     rrLeaderboardData.forEach((p, i) => {
       const pct = p.total > 0 ? (p.pct * 100).toFixed(0) + '%' : '';
-      csv += `${i + 1},${csvCell(p.name)},${p.wins},${p.losses},${pct}\n`;
+      const diff = anyScores ? ',' + csvCell((p.diff > 0 ? '+' : '') + p.diff) : '';
+      csv += `${i + 1},${csvCell(p.name)},${p.wins},${p.losses},${pct}${diff}\n`;
     });
   }
 
@@ -689,13 +999,16 @@ function exportCSV() {
     for (const round of scheduleData) {
       const rNames = roundNamesMap[round.round] || scheduleNames;
       const rw = roundWinners[round.round];
+      const rs = roundScores[round.round] || {};
       csv += `\nRound ${round.round}\n`;
-      csv += 'Court,Team A,Team B,Winner\n';
+      csv += 'Court,Team A,Team B,Score,Winner\n';
       round.courts.forEach((court, ci) => {
         const tA = `${rNames[court.teamA[0]]} & ${rNames[court.teamA[1]]}`;
         const tB = `${rNames[court.teamB[0]]} & ${rNames[court.teamB[1]]}`;
         const winner = rw && rw[ci] ? (rw[ci] === 'A' ? tA : tB) : '';
-        csv += `${ci + 1},${csvCell(tA)},${csvCell(tB)},${csvCell(winner)}\n`;
+        const sc = rs[ci];
+        const score = sc && sc.a != null && sc.b != null ? `${sc.a}-${sc.b}` : '';
+        csv += `${ci + 1},${csvCell(tA)},${csvCell(tB)},${csvCell(score)},${csvCell(winner)}\n`;
       });
       if (round.sitOuts.length > 0) {
         csv += `Bye:,${csvCell(round.sitOuts.map(i => rNames[i]).join(', '))}\n`;
@@ -806,3 +1119,4 @@ function renderMatrix(title, matrix, names, n, maxVal) {
 // Initial build (default — may be overridden by restoreState at end of script)
 buildPlayerGrid(20);
 buildCourtInputs(4);
+renderRRScoringControls();
