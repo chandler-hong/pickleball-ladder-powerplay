@@ -1403,3 +1403,24 @@
   }
   .theme-toggle:hover { background: rgba(129,140,248,0.2); transform: translateY(-1px); }
   [data-theme="light"] .theme-toggle { background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.25); }
+
+  /* --- Round-advance transition -----------------------------------------
+     Suppress the whole-page cross-fade so only the round cards animate; the
+     banner, timer and leaderboard update instantly as they always have. */
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation: none; }
+
+  /* The arriving current round travels about one card height, so a genuine
+     positional morph reads well. This is the API default; stated explicitly
+     for the duration and easing. */
+  ::view-transition-group(*) {
+    animation-duration: 350ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Reduced motion: apply the change with no animation at all. */
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) { animation: none !important; }
+  }

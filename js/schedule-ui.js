@@ -881,6 +881,11 @@ function updateRoundStates() {
     if (!isRoundComplete(i)) { currentRound = i; break; }
   }
 
+  // Captured before rrCurrentRound is overwritten below: the reorder is worth
+  // animating only when the current round actually moved. Initial render,
+  // restoreState, and score edits that leave the round alone stay instant.
+  const roundAdvanced = rrCurrentRound !== null && currentRound !== rrCurrentRound;
+
   // Auto-reset the round timer when the current round advances (mirrors the
   // ladder timer resetting on each new round). Reset in place so the freshly
   // built banner slot renders the idle timer below.
@@ -905,33 +910,44 @@ function updateRoundStates() {
   renderRRRoundTimer();
 
   // Update round cards and team states
-  for (let i = 1; i <= totalRounds; i++) {
-    const el = document.getElementById(`round-${i}`);
-    if (!el) continue;
-    const done = isRoundComplete(i);
-    el.classList.toggle('round-completed', done);
-    el.classList.toggle('current-round', i === currentRound);
-    el.classList.toggle('round-future', currentRound !== null && i > currentRound);
+  const applyRoundClasses = () => {
+    for (let i = 1; i <= totalRounds; i++) {
+      const el = document.getElementById(`round-${i}`);
+      if (!el) continue;
+      const done = isRoundComplete(i);
+      el.classList.toggle('round-completed', done);
+      el.classList.toggle('current-round', i === currentRound);
+      el.classList.toggle('round-future', currentRound !== null && i > currentRound);
 
-    for (let c = 0; c < numCourtsInSchedule; c++) {
-      const teamAEl = document.getElementById(`r${i}c${c}a`);
-      const teamBEl = document.getElementById(`r${i}c${c}b`);
-      if (!teamAEl || !teamBEl) continue;
-      const winner = roundWinners[i] && roundWinners[i][c];
-      teamAEl.classList.toggle('winner', winner === 'A');
-      teamAEl.classList.toggle('loser', winner === 'B');
-      teamBEl.classList.toggle('winner', winner === 'B');
-      teamBEl.classList.toggle('loser', winner === 'A');
+      for (let c = 0; c < numCourtsInSchedule; c++) {
+        const teamAEl = document.getElementById(`r${i}c${c}a`);
+        const teamBEl = document.getElementById(`r${i}c${c}b`);
+        if (!teamAEl || !teamBEl) continue;
+        const winner = roundWinners[i] && roundWinners[i][c];
+        teamAEl.classList.toggle('winner', winner === 'A');
+        teamAEl.classList.toggle('loser', winner === 'B');
+        teamBEl.classList.toggle('winner', winner === 'B');
+        teamBEl.classList.toggle('loser', winner === 'A');
+      }
     }
-  }
 
-  // Count after the toggles above, so this reflects the state just applied.
-  const dividerText = document.querySelector('#roundsDivider .rounds-divider-text');
-  if (dividerText) {
-    let doneCount = 0;
-    for (let i = 1; i <= totalRounds; i++) if (isRoundComplete(i)) doneCount++;
-    dividerText.textContent = 'Completed · ' + doneCount +
-      (doneCount === 1 ? ' round' : ' rounds');
+    // Count after the toggles above, so this reflects the state just applied.
+    const dividerText = document.querySelector('#roundsDivider .rounds-divider-text');
+    if (dividerText) {
+      let doneCount = 0;
+      for (let i = 1; i <= totalRounds; i++) if (isRoundComplete(i)) doneCount++;
+      dividerText.textContent = 'Completed · ' + doneCount +
+        (doneCount === 1 ? ' round' : ' rounds');
+    }
+  };
+
+  // Animate only a real round change, and only where the API exists. Everything
+  // else — first paint, restore, editing a score without finishing a round —
+  // applies instantly, exactly as before.
+  if (roundAdvanced && document.startViewTransition) {
+    document.startViewTransition(applyRoundClasses);
+  } else {
+    applyRoundClasses();
   }
 
   renderLeaderboard();
@@ -1052,7 +1068,9 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
   for (const round of result.schedule) {
     const rNames = roundNamesMap[round.round] || names;
     const sitOutNames = round.sitOuts.map(i => esc(rNames[i])).join(', ');
-    html += `<div class="round" id="round-${round.round}">
+    // A unique, stable view-transition-name lets the browser pair this card's
+    // before/after snapshots and animate it individually when order changes.
+    html += `<div class="round" id="round-${round.round}" style="view-transition-name:rr-round-${round.round}">
       <div class="round-header">
         <span class="round-title">Round ${round.round}</span>
         <div class="round-header-right">
