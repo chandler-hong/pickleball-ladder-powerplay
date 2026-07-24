@@ -825,9 +825,12 @@
     #leaderboardSection { order: -1; }
     #scheduleSection { order: 1; }
     /* A printed schedule is a reference handout: keep rounds in numeric order
-       rather than reshuffled around whichever round was current at export. */
-    #scheduleSection .round.current-round,
-    #scheduleSection .round.round-completed { order: 0; }
+       rather than reshuffled around whichever round was current at export.
+       Reverting to block layout makes every order declaration inert, so a rule
+       added later cannot silently reorder a printed handout — and it keeps
+       round cards out of flex fragmentation, which interacts badly with the
+       break-inside: avoid below. */
+    #scheduleSection { display: block; }
     .leaderboard { margin-bottom: 0.3cm; }
     .leaderboard h2 { font-size: 11pt; color: #111; margin-bottom: 0.15cm; }
     .leaderboard-table {

@@ -78,7 +78,7 @@ Round 3
 
 `order` changes visual order only. DOM order — and therefore tab order and screen-reader reading order — stays numeric 1..N. A keyboard user tabbing forward reaches round 1's controls before the pinned current round.
 
-This is the known caveat of flex `order` and is inherited from the existing v2.9.2 mobile rule, whose comment already records it. Accepted deliberately: reordering the DOM in JavaScript would mean `renderSchedule` emitting rounds in a state-dependent sequence, which fights the substitution and score-entry re-render paths that address cards by `id="round-N"`. The cost of the CSS approach is bounded and documented; the cost of the JS approach is spread across code that currently works.
+This is the known caveat of flex `order` and is inherited from the existing v2.9.2 mobile rule, whose comment already records it. That inherited caveat was scoped to narrow screens, where a single card moved up; here the visual/DOM divergence extends to every viewport width, including desktop, and its magnitude is larger — up to N-1 completed rounds can move below the upcoming ones rather than just one card shifting. With rounds 1-9 of 10 complete, for instance, tabbing forward from the timer lands in round 1's team buttons at the very bottom of the page, with no surrounding focus context. Accepted deliberately: reordering the DOM in JavaScript would mean `renderSchedule` emitting rounds in a state-dependent sequence, which fights the substitution and score-entry re-render paths that address cards by `id="round-N"`. The cost of the CSS approach is bounded and documented; the cost of the JS approach is spread across code that currently works.
 
 ## Testing
 
