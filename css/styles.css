@@ -291,6 +291,23 @@
     text-decoration-color: rgba(255,255,255,0.15);
   }
   .round.round-future { opacity: 0.4; pointer-events: none; }
+  /* Pin the current round directly under the timer, at every width, so someone
+     on round 10 of 10 doesn't have to scroll up to reach the timer controls.
+     Then upcoming rounds (default order 0), then completed rounds last so
+     played rounds don't fill the screen.
+
+     Order-only: DOM order — and so tab and screen-reader order — stays numeric
+     1..N. Accepted deliberately; reordering in JS would mean renderSchedule
+     emitting a state-dependent sequence, which fights the substitution and
+     score-entry re-render paths that address cards by id="round-N".
+
+     #scheduleSection must be a flex container or the order declarations are
+     inert. Scoped to #scheduleSection so Traditional Ladder is untouched. */
+  #scheduleSection { display: flex; flex-direction: column; }
+  #scheduleSection .schedule-header { order: -3; }
+  #scheduleSection #currentRoundBanner { order: -2; }
+  #scheduleSection .round.current-round { order: -1; }
+  #scheduleSection .round.round-completed { order: 1; }
   .round-header {
     display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.85rem;
   }
@@ -692,12 +709,6 @@
     .round-timer-input { min-height: 42px; width: 68px; font-size: 1rem; }
     .btn-timer { min-height: 42px; padding: 0.5rem 1rem; font-size: 0.88rem; }
     .round-timer-display { font-size: 1.3rem; }
-    /* Pin the current round to the top (right under the timer) so people on a
-       later round don't have to scroll. Order-only; DOM/tab order is unchanged. */
-    #scheduleSection { display: flex; flex-direction: column; }
-    #scheduleSection .schedule-header { order: -3; }
-    #scheduleSection #currentRoundBanner { order: -2; }
-    #scheduleSection .round.current-round { order: -1; }
     .round-header { flex-wrap: wrap; gap: 0.4rem; }
     .round-header-right { margin-left: 0; width: 100%; }
     .round-title { font-size: 0.9rem; }
@@ -813,6 +824,10 @@
     #output { display: flex !important; flex-direction: column; }
     #leaderboardSection { order: -1; }
     #scheduleSection { order: 1; }
+    /* A printed schedule is a reference handout: keep rounds in numeric order
+       rather than reshuffled around whichever round was current at export. */
+    #scheduleSection .round.current-round,
+    #scheduleSection .round.round-completed { order: 0; }
     .leaderboard { margin-bottom: 0.3cm; }
     .leaderboard h2 { font-size: 11pt; color: #111; margin-bottom: 0.15cm; }
     .leaderboard-table {
