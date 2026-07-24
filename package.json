@@ -1,6 +1,6 @@
 {
   "name": "pickleball-round-robin-ladder",
-  "version": "2.9.2",
+  "version": "2.10.0",
   "description": "Pickleball Round Robin & Ladder schedule generator",
   "private": true,
   "scripts": {

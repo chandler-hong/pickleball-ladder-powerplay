@@ -8,6 +8,50 @@ function esc(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+
+// Single comparison key for player names, so the Generate/Start validators and
+// the live inline warnings agree on what counts as the same person. Without a
+// shared rule "dave" and "Dave " were flagged in one place and not the other.
+function normalizeName(s) {
+  return String(s == null ? '' : s).trim().toLowerCase();
+}
+
+// Indices of every name that collides with another. Both sides of a pair are
+// returned — the live UI has to be able to clear the warning on whichever row
+// the user chooses to fix. Blank names are skipped; the forms report those
+// separately as "empty" and two blank rows are not a naming conflict.
+function duplicateNameIndices(names) {
+  const firstSeen = new Map();
+  const dups = new Set();
+  names.forEach((name, i) => {
+    const key = normalizeName(name);
+    if (!key) return;
+    if (firstSeen.has(key)) {
+      dups.add(firstSeen.get(key));
+      dups.add(i);
+    } else {
+      firstSeen.set(key, i);
+    }
+  });
+  return dups;
+}
+
+// Adds or removes the inline "already used" note + amber outline on one name
+// input. Shared by both modes so the two grids behave identically.
+function setDupNameWarning(input, isDup, name) {
+  const row = input.parentElement;
+  const existing = row.querySelector('.dup-warning');
+  if (existing) existing.remove();
+  if (!isDup) {
+    input.style.outline = '';
+    return;
+  }
+  input.style.outline = '2px solid #f59e0b';
+  const warn = document.createElement('div');
+  warn.className = 'dup-warning';
+  warn.textContent = '"' + name + '" is already used. Add a last name initial to tell them apart on the leaderboard.';
+  row.appendChild(warn);
+}
 // Escape a value for safe inclusion in a CSV cell: doubles embedded quotes,
 // wraps fields that contain a delimiter, and neutralizes spreadsheet formula
 // injection by prefixing a leading = + - @ tab or CR with an apostrophe.
@@ -794,5 +838,5 @@ function pickRandomNames(count) {
 // Node/CommonJS export for tests. Guarded so the browser (where `module`
 // is undefined) is unaffected.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { csvCell, guessGender, shuffle, pickRandomNames, STATE_SCHEMA_VERSION, pickleballResult, pickleballScoreError };
+  module.exports = { csvCell, guessGender, shuffle, pickRandomNames, STATE_SCHEMA_VERSION, pickleballResult, pickleballScoreError, normalizeName, duplicateNameIndices };
 }

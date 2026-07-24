@@ -218,6 +218,7 @@ function buildLadderCourtInputs() {
         buildLadderCourtAssignments();
         saveLadderState();
       }
+      refreshLadderErrorBanner();
     });
     wrap.appendChild(label);
     wrap.appendChild(input);
@@ -262,29 +263,17 @@ function buildLadderPlayerGrid() {
       // Live substitution: update current round if ladder is active
       const idx = parseInt(this.id.slice(2));
       if (ladderState && idx < ladderState.names.length) {
-        const newName = this.value.trim() || `Player ${idx + 1}`;
-
-        // Duplicate name warning
-        const existingWarn = this.parentElement.querySelector('.dup-warning');
-        if (existingWarn) existingWarn.remove();
-        const otherNames = ladderState.names.filter((_, ni) => ni !== idx);
-        if (newName && otherNames.includes(newName)) {
-          this.style.outline = '2px solid #f59e0b';
-          const warn = document.createElement('div');
-          warn.className = 'dup-warning';
-          warn.textContent = '"' + newName + '" is already used. Add a last name initial to tell them apart on the leaderboard.';
-          this.parentElement.appendChild(warn);
-        } else {
-          this.style.outline = '';
-        }
-
-        ladderState.names[idx] = newName;
+        ladderState.names[idx] = this.value.trim() || `Player ${idx + 1}`;
         ladderState.genders[idx] = document.getElementById(`lg${idx}f`).checked ? 'F' : 'M';
+        // Re-check every row, not just this one: fixing one half of a duplicate
+        // pair has to clear the warning on the other half too.
+        refreshLadderDuplicateNameWarnings();
         debounce('ladderRender', () => {
           renderLadderCurrentRound();
           renderLadderLeaderboard();
         }, 180);
       }
+      refreshLadderErrorBanner();
       debounce('ladderAssignChips', () => buildLadderCourtAssignments(), 80);
       saveLadderPlayerData();
     });
@@ -298,6 +287,23 @@ function buildLadderPlayerGrid() {
       saveLadderPlayerData();
       buildLadderCourtAssignments();
     });
+  }
+  // Rebuilding the rows discards their warnings — recompute so a restored or
+  // resized grid still shows the clashes that are actually there.
+  refreshLadderDuplicateNameWarnings();
+}
+
+// Re-evaluates the inline duplicate-name warning across the whole ladder grid.
+// Recomputing every row — rather than only the one being typed in — is what
+// lets the warning clear once the clash is resolved from either side.
+function refreshLadderDuplicateNameWarnings() {
+  // Guarded on the array itself: this runs during restore, before a
+  // localStorage payload has proven itself.
+  if (!ladderState || !Array.isArray(ladderState.names)) return;
+  const dups = duplicateNameIndices(ladderState.names);
+  for (let i = 0; i < ladderState.names.length; i++) {
+    const el = document.getElementById(`lp${i}`);
+    if (el) setDupNameWarning(el, dups.has(i), ladderState.names[i]);
   }
 }
 
@@ -616,14 +622,16 @@ function ladderValidate() {
   }
   if (emptyCount > 0) errors.push(`${emptyCount} player name${emptyCount > 1 ? 's are' : ' is'} empty`);
 
-  const seen = {};
-  for (let i = 0; i < getLadderPlayerCount(); i++) {
-    const lower = names[i].toLowerCase();
-    if (seen[lower] !== undefined) {
-      errors.push(`"${esc(names[i])}" appears more than once — add a last name initial`);
-    }
-    seen[lower] = i;
-  }
+  const dupNames = duplicateNameIndices(names);
+  const reported = new Set();
+  dupNames.forEach(i => {
+    const el = document.getElementById(`lp${i}`);
+    if (el) el.classList.add('input-error');
+    const key = normalizeName(names[i]);
+    if (reported.has(key)) return;
+    reported.add(key);
+    errors.push(`"${esc(names[i])}" appears more than once — add a last name initial`);
+  });
 
   const courtVals = [];
   for (let i = 0; i < ladderConfig.numCourts; i++) {
@@ -651,17 +659,50 @@ function ladderValidate() {
   return errors;
 }
 
+// Messages currently on screen, so a live edit can retire the ones it resolved
+// without surfacing problems the user hasn't asked about yet — the banner only
+// ever shrinks between Start presses.
+let ladderShownErrors = [];
+
+function renderLadderErrorBanner(errors) {
+  const banner = document.getElementById('ladderErrorBanner');
+  if (!banner) return;
+  ladderShownErrors = errors;
+  if (errors.length === 0) {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+    return;
+  }
+  banner.innerHTML = errors.length === 1
+    ? errors[0]
+    : '<ul>' + errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
+  banner.style.display = 'block';
+}
+
+// Exactly the fields ladderValidate() can flag — listed explicitly so the
+// round's score inputs keep the error state checkLadderCourtScore gives them.
+const LADDER_SETUP_FIELDS = '#ladderPlayerGrid input, #ladderCourtInputs input';
+
+// Called while the user edits: re-runs the checks, drops any message that no
+// longer applies, and re-flags the fields that are still wrong. Without this
+// the banner stayed put until the next Start press.
+function refreshLadderErrorBanner() {
+  if (ladderShownErrors.length === 0) return;
+  document.querySelectorAll(LADDER_SETUP_FIELDS)
+    .forEach(el => el.classList.remove('input-error'));
+  const still = new Set(ladderValidate());
+  renderLadderErrorBanner(ladderShownErrors.filter(e => still.has(e)));
+}
+
 function ladderStart() {
   const errors = ladderValidate();
   const banner = document.getElementById('ladderErrorBanner');
   if (errors.length > 0) {
-    const unique = [...new Set(errors)];
-    banner.innerHTML = unique.length === 1 ? unique[0] : '<ul>' + unique.map(e => `<li>${e}</li>`).join('') + '</ul>';
-    banner.style.display = 'block';
+    renderLadderErrorBanner([...new Set(errors)]);
     banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
-  banner.style.display = 'none';
+  renderLadderErrorBanner([]);
 
   const names = getLadderNames();
   const genders = getLadderGenders();

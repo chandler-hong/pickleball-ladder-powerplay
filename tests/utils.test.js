@@ -1,7 +1,8 @@
 // Unit tests for js/utils.js pure helpers.
 // Run: node tests/utils.test.js
 
-const { csvCell, guessGender, shuffle, pickRandomNames, pickleballResult, pickleballScoreError } = require('../js/utils.js');
+const { csvCell, guessGender, shuffle, pickRandomNames, pickleballResult, pickleballScoreError,
+        normalizeName, duplicateNameIndices } = require('../js/utils.js');
 
 let passed = 0;
 let failed = 0;
@@ -110,6 +111,36 @@ test('pickleballScoreError — flags impossible, allows unfinished', () => {
   assert(pickleballScoreError(13, 9, 2) !== null, 'wb2 13-9 error (>2 lead past 11)');
   assert(pickleballScoreError(20, 5, 2) !== null, 'wb2 20-5 error');
   assert(pickleballScoreError(NaN, NaN, 2) === null, 'blank -> no error');
+});
+
+test('normalizeName — trims and folds case so the forms agree', () => {
+  assert(normalizeName('Dave') === 'dave', 'lowercased');
+  assert(normalizeName('  Dave  ') === 'dave', 'trimmed');
+  assert(normalizeName('DAVE') === 'dave', 'all caps folded');
+  assert(normalizeName('Dave B.') === 'dave b.', 'last initial kept distinct');
+  assert(normalizeName('') === '', 'empty stays empty');
+  assert(normalizeName('   ') === '', 'whitespace-only stays empty');
+  assert(normalizeName(null) === '', 'null tolerated');
+  assert(normalizeName(undefined) === '', 'undefined tolerated');
+});
+
+test('duplicateNameIndices — flags every member of a colliding group', () => {
+  const dup = names => [...duplicateNameIndices(names)].sort((a, b) => a - b);
+
+  assert(dup(['Ann', 'Bob', 'Cat']).length === 0, 'all unique -> none');
+  // Both sides of the pair must be reported, not just the later one: the UI
+  // has to be able to clear the warning on whichever row the user fixes.
+  assert(JSON.stringify(dup(['Dave', 'Ann', 'Dave'])) === '[0,2]', 'pair -> both indices');
+  assert(JSON.stringify(dup(['Dave', 'Dave', 'Dave'])) === '[0,1,2]', 'triple -> all three');
+  assert(JSON.stringify(dup(['dave', 'Ann', 'DAVE'])) === '[0,2]', 'case-insensitive');
+  assert(JSON.stringify(dup(['Dave', 'Ann', ' Dave '])) === '[0,2]', 'whitespace-insensitive');
+  assert(JSON.stringify(dup(['Dave', 'Dave B.'])) === '[]', 'last initial resolves it');
+  // Blank rows are reported separately as "empty" — they must not also be
+  // called duplicates of each other.
+  assert(JSON.stringify(dup(['', '', 'Ann'])) === '[]', 'blanks are not duplicates');
+  assert(JSON.stringify(dup(['  ', 'Ann'])) === '[]', 'whitespace-only not a duplicate');
+  assert(JSON.stringify(dup([])) === '[]', 'empty list -> none');
+  assert(JSON.stringify(dup(['Ann', 'Bob', 'Ann', 'Bob'])) === '[0,1,2,3]', 'two separate pairs');
 });
 
 console.log('\n' + '='.repeat(60));

@@ -78,27 +78,13 @@ function buildPlayerGrid(count, skipSave) {
         }
       }
       updatePlayerGenderCount();
+      // Renaming the roster before anyone has played retires the schedule, so
+      // it can only reappear via Generate. Runs first: it nulls scheduleNames,
+      // which skips the substitution branch below.
+      setupChanged();
       // Live-update schedule if one exists (substitution: only current + future rounds)
       if (scheduleNames && idx < scheduleNames.length) {
         const newName = this.value || `Player ${idx + 1}`;
-        // Warn if duplicate name exists (check all round names + current player inputs)
-        const allNames = [];
-        for (let r = 1; r <= totalRounds; r++) {
-          const rn = roundNamesMap[r] || scheduleNames;
-          rn.forEach((n, i) => { if (i !== idx) allNames.push(n); });
-        }
-        // Remove any existing warning
-        const existingWarn = this.parentElement.querySelector('.dup-warning');
-        if (existingWarn) existingWarn.remove();
-        if (newName && allNames.includes(newName)) {
-          this.style.outline = '2px solid #f59e0b';
-          const warn = document.createElement('div');
-          warn.className = 'dup-warning';
-          warn.textContent = '"' + newName + '" is already used. Add a last name initial to tell them apart on the leaderboard.';
-          this.parentElement.appendChild(warn);
-        } else {
-          this.style.outline = '';
-        }
         scheduleNames[idx] = newName;
         // Find current round (first incomplete)
         let curRound = totalRounds + 1;
@@ -110,11 +96,15 @@ function buildPlayerGrid(count, skipSave) {
           if (!roundNamesMap[r]) roundNamesMap[r] = [...scheduleNames];
           roundNamesMap[r][idx] = newName;
         }
+        // Re-check the whole grid, not just this row: fixing one half of a
+        // duplicate pair has to clear the warning on the other half too.
+        refreshDuplicateNameWarnings();
         debounce('scheduleRender', () => {
           renderSchedule({ schedule: scheduleData }, scheduleNames, scheduleCourtNames, true);
           if (lastFullResult) renderStats(lastFullResult, scheduleNames);
         }, 180);
       }
+      refreshValidationBanner();
       saveState();
     });
     // Save on gender toggle change; dismiss undetected hint on manual toggle
@@ -126,6 +116,7 @@ function buildPlayerGrid(count, skipSave) {
       toggle.classList.remove('gender-undetected');
       const hint = row.querySelector('.gender-hint');
       if (hint) hint.remove();
+      setupChanged();  // gender drives the pairing, so an unplayed schedule is stale
       saveState();
       checkGenderWarning();
       updatePlayerGenderCount();
@@ -135,6 +126,48 @@ function buildPlayerGrid(count, skipSave) {
   }
   currentPlayerCount = count;
   updatePlayerGenderCount();
+  // Rebuilding the rows discards their warnings — recompute so a restored or
+  // resized grid still shows the clashes that are actually there.
+  refreshDuplicateNameWarnings();
+}
+
+// Re-evaluates the inline duplicate-name warning for every player row.
+//
+// A slot conflicts when its current name matches a name some *other* slot has
+// used, including in already-completed rounds: those keep their original names
+// and get their own leaderboard row, so a name that has already played is
+// still taken. Recomputing the whole grid — rather than only the row being
+// typed in — is what lets a warning disappear once the clash is resolved.
+function refreshDuplicateNameWarnings() {
+  // No schedule (never generated, or just retired) means no slot identities to
+  // collide, so the truthful state is "no warnings". Clearing rather than
+  // returning early matters: otherwise a warning raised while a schedule was
+  // live would outlive it with nothing left to ever take it down. Duplicates
+  // are still caught at Generate time by collectValidationErrors().
+  // Array-guarded because restore runs this before a payload has proven itself.
+  if (!Array.isArray(scheduleNames)) {
+    for (let i = 0; i < currentPlayerCount; i++) {
+      const el = document.getElementById(`p${i}`);
+      if (el) setDupNameWarning(el, false, '');
+    }
+    return;
+  }
+  const n = scheduleNames.length;
+  const usedBySlot = Array.from({ length: n }, () => new Set());
+  const note = (i, name) => { const k = normalizeName(name); if (k) usedBySlot[i].add(k); };
+  for (let r = 1; r <= totalRounds; r++) {
+    const rn = roundNamesMap[r] || scheduleNames;
+    for (let i = 0; i < n; i++) note(i, rn[i]);
+  }
+  for (let i = 0; i < n; i++) note(i, scheduleNames[i]);
+
+  for (let i = 0; i < n; i++) {
+    const el = document.getElementById(`p${i}`);
+    if (!el) continue;
+    const key = normalizeName(scheduleNames[i]);
+    const clash = !!key && usedBySlot.some((used, j) => j !== i && used.has(key));
+    setDupNameWarning(el, clash, scheduleNames[i]);
+  }
 }
 
 // Counts only rows where a name has been entered. Defaults are M, so we
@@ -172,7 +205,12 @@ function buildCourtInputs(count, skipSave) {
     input.type = 'number'; input.className = 'court-num-input';
     input.id = `court${i}`; input.min = 1; input.max = 99;
     input.value = i < courtData.length ? courtData[i] : (i + 1);
-    input.addEventListener('input', function() { this.classList.remove('input-error'); saveState(); });
+    input.addEventListener('input', function() {
+      this.classList.remove('input-error');
+      setupChanged();
+      refreshValidationBanner();
+      saveState();
+    });
     container.appendChild(input);
   }
   currentCourtCount = count;
@@ -198,23 +236,33 @@ function saveCourtData() {
 // Rebuild grids when counts change
 document.getElementById('numPlayers').addEventListener('input', function() {
   this.classList.remove('input-error');
+  setupChanged();
   const v = parseInt(this.value);
   if (v >= 4 && v <= 40) buildPlayerGrid(v);
+  refreshValidationBanner();
   saveState();
   checkGenderWarning();
 });
 document.getElementById('numCourts').addEventListener('input', function() {
   this.classList.remove('input-error');
+  setupChanged();
   const v = parseInt(this.value);
   if (v >= 1 && v <= 10) buildCourtInputs(v);
+  refreshValidationBanner();
   saveState();
   checkGenderWarning();
 });
 document.getElementById('numRounds').addEventListener('input', function() {
   this.classList.remove('input-error');
+  setupChanged();
+  refreshValidationBanner();
   saveState();
 });
-document.getElementById('preferMixed').addEventListener('change', () => { saveState(); checkGenderWarning(); });
+document.getElementById('preferMixed').addEventListener('change', () => {
+  setupChanged();
+  saveState();
+  checkGenderWarning();
+});
 
 function checkGenderWarning() {
   const warning = document.getElementById('genderWarning');
@@ -254,6 +302,8 @@ function fillDefaults() {
     document.getElementById(`p${i}`).value = picks[i].name;
     document.getElementById(`g${i}${picks[i].gender.toLowerCase()}`).checked = true;
   }
+  setupChanged();
+  refreshDuplicateNameWarnings();
   saveState();
   checkGenderWarning();
   updatePlayerGenderCount();
@@ -284,15 +334,65 @@ function getGenders() {
 }
 
 // --- Validation & Rendering ---
+// Messages currently on screen. Tracked so a live edit can retire the ones it
+// resolved without also surfacing problems the user hasn't asked about yet —
+// the banner only ever shrinks between Generate presses.
+let shownErrors = [];
+
 function clearValidation() {
   document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
   const banner = document.getElementById('errorBanner');
   banner.style.display = 'none';
   banner.innerHTML = '';
+  shownErrors = [];
+}
+
+function renderErrorBanner(errors) {
+  const banner = document.getElementById('errorBanner');
+  shownErrors = errors;
+  if (errors.length === 0) {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+    return;
+  }
+  banner.innerHTML = errors.length === 1
+    ? errors[0]
+    : '<ul>' + errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
+  banner.style.display = 'block';
+}
+
+// Exactly the fields collectValidationErrors() can flag. Listed explicitly
+// rather than swept with '.input-error' because the schedule's score inputs
+// live inside #rrSetup too, and they own their own error state (rrSyncCourt).
+const RR_SETUP_FIELDS = '#numPlayers, #numCourts, #numRounds, #playerGrid input, #courtInputs input';
+
+// Called while the user edits: re-runs the checks, drops any message that no
+// longer applies, and re-flags the fields that are still wrong. Without this
+// the banner (and the other half of a duplicate pair) stayed marked until the
+// next Generate press.
+function refreshValidationBanner() {
+  if (shownErrors.length === 0) return;
+  document.querySelectorAll(RR_SETUP_FIELDS)
+    .forEach(el => el.classList.remove('input-error'));
+  const still = new Set(collectValidationErrors().errors);
+  renderErrorBanner(shownErrors.filter(e => still.has(e)));
 }
 
 function validate() {
   clearValidation();
+  const { errors, result } = collectValidationErrors();
+  if (errors.length > 0) {
+    renderErrorBanner([...new Set(errors)]);
+    document.getElementById('errorBanner').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return null;
+  }
+  return result;
+}
+
+// Runs every setup check, flagging offending fields, and returns the messages
+// plus the parsed config. Does not touch the banner — callers decide how to
+// present the result.
+function collectValidationErrors() {
   const errors = [];
   const flagField = (el) => el.classList.add('input-error');
 
@@ -333,18 +433,15 @@ function validate() {
   }
 
   // Player names: duplicates need a last initial to distinguish
-  const seen = {};
-  for (let i = 0; i < currentPlayerCount; i++) {
-    const lower = names[i].toLowerCase();
-    if (!lower) continue;
-    if (seen[lower] !== undefined) {
-      flagField(document.getElementById(`p${i}`));
-      flagField(document.getElementById(`p${seen[lower]}`));
-      errors.push(`"${esc(names[i])}" appears more than once \u2014 add a last name initial (e.g. "${esc(names[i])} A.")`);
-    } else {
-      seen[lower] = i;
-    }
-  }
+  const dupNames = duplicateNameIndices(names);
+  const reported = new Set();
+  dupNames.forEach(i => {
+    flagField(document.getElementById(`p${i}`));
+    const key = normalizeName(names[i]);
+    if (reported.has(key)) return;
+    reported.add(key);
+    errors.push(`"${esc(names[i])}" appears more than once \u2014 add a last name initial (e.g. "${esc(names[i])} A.")`);
+  });
 
   // Court numbers: must be valid positive integers
   for (let i = 0; i < currentCourtCount; i++) {
@@ -377,18 +474,63 @@ function validate() {
     errors.push('Rounds must be a number between 1 and 30');
   }
 
-  if (errors.length > 0) {
-    const banner = document.getElementById('errorBanner');
-    const unique = [...new Set(errors)];
-    banner.innerHTML = unique.length === 1
-      ? unique[0]
-      : '<ul>' + unique.map(e => `<li>${e}</li>`).join('') + '</ul>';
-    banner.style.display = 'block';
-    banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return null;
-  }
+  return {
+    errors,
+    result: { names: names.map((n, i) => n || `Player ${i + 1}`), rounds, numPlayers, numCourts }
+  };
+}
 
-  return { names: names.map((n,i) => n || `Player ${i+1}`), rounds, numPlayers, numCourts };
+// True once any court has a recorded winner or a complete score — i.e. the
+// tournament is genuinely underway rather than merely generated. Accepts the
+// maps explicitly so restoreState can ask the same question of a saved payload
+// before it commits to showing anything.
+function hasEnteredResults(winners, scores) {
+  const w = winners || roundWinners;
+  const s = scores || roundScores;
+  for (const r in w) {
+    if (w[r] && Object.keys(w[r]).some(c => w[r][c])) return true;
+  }
+  for (const r in s) {
+    if (s[r] && Object.keys(s[r]).length > 0) return true;
+  }
+  return false;
+}
+
+// Drops a generated-but-not-started schedule and hides the output. The schedule
+// is derived from the roster, so once the roster changes it is no longer the
+// schedule the user asked for — it must come back through Generate, not through
+// a stray keystroke. A tournament with results entered is left strictly alone
+// (see setupChanged): substituting a player mid-event is a supported flow.
+function retireSchedule() {
+  scheduleData = null;
+  scheduleNames = null;
+  lastFullResult = null;
+  roundNamesMap = {};
+  scheduleCourtNames = [];
+  roundWinners = {};
+  roundScores = {};
+  totalRounds = 0;
+  numCourtsInSchedule = 0;
+  rrCurrentRound = null;
+  stopRRTimerInterval();
+  // Keep the chosen duration so the next schedule starts with the same default.
+  rrRoundTimer = newRoundTimerState(rrRoundTimer ? (rrRoundTimer.lastDurationSec || 600) : 600);
+  document.getElementById('output').style.display = 'none';
+  document.getElementById('scheduleSection').innerHTML = '';
+  document.getElementById('leaderboardSection').innerHTML = '';
+  document.getElementById('statsSection').innerHTML = '';
+  // Slot-identity warnings are meaningless without a schedule, and nothing else
+  // would ever clear them once scheduleNames is gone.
+  refreshDuplicateNameWarnings();
+}
+
+// Call from every setup control. Retires a schedule that hasn't been played
+// yet; leaves an in-progress one untouched so live substitution still works.
+// Returns true when the schedule was retired.
+function setupChanged() {
+  if (!scheduleData || hasEnteredResults()) return false;
+  retireSchedule();
+  return true;
 }
 
 function generate() {
@@ -748,8 +890,10 @@ function updateRoundStates() {
   }
   rrCurrentRound = currentRound;
 
-  // Update banner
+  // Update banner. Absent once a schedule has been retired — the whole
+  // schedule section is emptied then, so there is nothing to update.
   const banner = document.getElementById('currentRoundBanner');
+  if (!banner) { stopRRTimerInterval(); renderLeaderboard(); return; }
   if (currentRound) {
     banner.innerHTML = `<span class="current-round-dot"></span>
       <span class="current-round-text">Current Round: <span>${currentRound}</span> of ${totalRounds}</span>

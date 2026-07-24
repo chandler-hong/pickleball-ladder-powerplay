@@ -42,11 +42,18 @@ function restoreState() {
     document.getElementById('numRounds').value = state.numRounds || 10;
     document.getElementById('preferMixed').checked = state.preferMixed !== false;
 
+    // Only a tournament that is actually underway comes back on load. A
+    // schedule that was generated but never played is deliberately dropped:
+    // the schedule view belongs to the Generate button, so reappearing on its
+    // own just looks like the button did nothing.
+    const resumable = !!(state.hasSchedule && state.scheduleResult && state.scheduleNames
+      && hasEnteredResults(state.roundWinners, state.roundScores));
+
     // Restore Round-Robin scoring prefs + entered scores (before renderSchedule
     // so the schedule renders in the right mode with scores prefilled).
     rrScoringMode = (state.rrScoringMode === 'scores') ? 'scores' : 'winner';
     rrWinBy = (state.rrWinBy === 2) ? 2 : 1;
-    roundScores = state.roundScores || {};
+    roundScores = resumable ? (state.roundScores || {}) : {};
     renderRRScoringControls();
 
     // Restore grids (skipSave=true to avoid overwriting restored data)
@@ -55,8 +62,7 @@ function restoreState() {
     buildPlayerGrid(state.numPlayers || 20, true);
     buildCourtInputs(state.numCourts || 4, true);
 
-    // Restore schedule if it was generated
-    if (state.hasSchedule && state.scheduleResult && state.scheduleNames) {
+    if (resumable) {
       scheduleCourtNames = state.scheduleCourtNames || [];
       lastFullResult = state.fullResult || null;
       roundNamesMap = state.roundNamesMap || {};
@@ -67,6 +73,10 @@ function restoreState() {
       updateRoundStates();
       resumeRRTimerOnRestore();
       document.getElementById('output').style.display = 'block';
+    } else if (state.rrRoundTimer) {
+      // Schedule dropped, but keep the round length the user last chose so the
+      // next generated schedule starts with their preferred default.
+      rrRoundTimer = newRoundTimerState(state.rrRoundTimer.lastDurationSec || 600);
     }
 
     return true;

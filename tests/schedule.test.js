@@ -102,6 +102,34 @@ function byeSpread(result) {
   return max - min;
 }
 
+// Worst bye spread measured after EVERY round, not just at the end. byeSpread()
+// above only checks the final totals, which a schedule can satisfy while still
+// benching one player twice before another has sat at all. Keeping this <= 1 is
+// what guarantees "everyone gets their Nth bye before anyone gets their N+1th".
+function worstRunningByeSpread(result, n) {
+  const running = new Array(n).fill(0);
+  let worst = 0;
+  for (const round of result.schedule) {
+    round.sitOuts.forEach(p => running[p]++);
+    const spread = Math.max(...running) - Math.min(...running);
+    if (spread > worst) worst = spread;
+  }
+  return worst;
+}
+
+// The round each milestone is reached: when everyone has at least `k` byes, and
+// when the first player reaches `k + 1`. Returns Infinity when never reached.
+function byeMilestones(result, n, k) {
+  const running = new Array(n).fill(0);
+  let allAtK = Infinity, firstAtKPlus1 = Infinity;
+  for (const round of result.schedule) {
+    round.sitOuts.forEach(p => running[p]++);
+    if (allAtK === Infinity && Math.min(...running) >= k) allAtK = round.round;
+    if (firstAtKPlus1 === Infinity && Math.max(...running) >= k + 1) firstAtKPlus1 = round.round;
+  }
+  return { allAtK, firstAtKPlus1 };
+}
+
 // --- Tests ----------------------------------------------------------
 
 test('Input validation', () => {
@@ -190,6 +218,54 @@ test('Back-to-back byes avoided in long schedule (20p 4c 10r, 4 byes/round)', ()
     }
   }
   assert(backToBack === 0, `No back-to-back byes (got ${backToBack})`);
+  resetScheduleRng();
+});
+
+test('Nobody gets a 2nd bye until everyone has had a 1st (16p 8M/8F 3c 10r)', () => {
+  // 4 byes/round over 16 players, so rounds 1-4 should hand out all 16 first
+  // byes before any repeat. Guards the reported concern directly.
+  for (const seed of [7, 42, 99, 2024, 31337]) {
+    setScheduleRng(mulberry32(seed));
+    const result = generateSchedule(16, 3, 10, makeGenders(8, 8), true);
+    const { allAtK, firstAtKPlus1 } = byeMilestones(result, 16, 1);
+    assert(allAtK === 4, `seed ${seed}: all 16 should have a bye by round 4 (got ${allAtK})`);
+    assert(firstAtKPlus1 >= allAtK,
+      `seed ${seed}: a 2nd bye appeared in round ${firstAtKPlus1}, before everyone had one (round ${allAtK})`);
+    assert(worstRunningByeSpread(result, 16) <= 1,
+      `seed ${seed}: running bye spread should stay <= 1 (got ${worstRunningByeSpread(result, 16)})`);
+  }
+  resetScheduleRng();
+});
+
+test('Running bye spread stays <= 1 across many shapes and gender splits', () => {
+  // The final byeSpread check elsewhere cannot catch a schedule that benches
+  // someone twice before another player has sat at all — this walks the running
+  // totals round by round. Skewed splits are included because gender parity is
+  // the constraint most likely to fight bye fairness.
+  const configs = [
+    { p: 16, c: 3, r: 10, m: 8,  f: 8  },
+    { p: 16, c: 3, r: 30, m: 8,  f: 8  },
+    { p: 16, c: 2, r: 12, m: 8,  f: 8  },
+    { p: 20, c: 4, r: 10, m: 10, f: 10 },
+    { p: 20, c: 3, r: 15, m: 15, f: 5  },
+    { p: 17, c: 4, r: 12, m: 1,  f: 16 },  // lone male: mixed-parity vs fairness
+    { p: 18, c: 4, r: 20, m: 9,  f: 9  },
+    { p: 24, c: 5, r: 10, m: 12, f: 12 },
+    { p: 13, c: 3, r: 11, m: 6,  f: 7  },
+    { p: 9,  c: 2, r: 9,  m: 4,  f: 5  },
+  ];
+  for (const cfg of configs) {
+    for (const mixed of [true, false]) {
+      for (const seed of [3, 77, 4242]) {
+        setScheduleRng(mulberry32(seed));
+        const result = generateSchedule(cfg.p, cfg.c, cfg.r, makeGenders(cfg.m, cfg.f), mixed);
+        const worst = worstRunningByeSpread(result, cfg.p);
+        assert(worst <= 1,
+          `${cfg.p}p ${cfg.c}c ${cfg.r}r ${cfg.m}M/${cfg.f}F mixed=${mixed} seed ${seed}: ` +
+          `running bye spread ${worst} > 1`);
+      }
+    }
+  }
   resetScheduleRng();
 });
 
