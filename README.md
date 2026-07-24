@@ -17,6 +17,7 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 - **Two ways to record results** — tap a team to pick the winner, or switch to **Enter scores** and type each game's score. Score entry has a **Win by 1 / Win by 2** toggle (games to 11), live validation that blocks impossible scores, and a **Complete Game Early** option for games the round timer cuts short
 - **Leaderboard** — auto-populates win/loss stats; when scores are entered it adds a **point-differential** column and uses it as the tiebreaker
 - **Per-round countdown timer** — set the round length (default 10 min), Pause / Resume / Reset; survives page refresh; auto-resets when the round advances and goes red/pulses when time's up
+- **Current round pinned to the top** — the round you're playing sits directly under the round timer, with upcoming rounds next and completed rounds tucked at the bottom, so you never scroll to reach the timer
 - **PDF and CSV export** — print-friendly layout and downloadable results
 
 ### Traditional Ladder Mode
