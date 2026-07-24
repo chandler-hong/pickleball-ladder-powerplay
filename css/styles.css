@@ -530,6 +530,30 @@
   }
   .rr-score-error-slot:empty { display: none; }
 
+  /* Round-Robin "Enter scores" mode reuses the ladder's .ladder-* matchup
+     layout, but the two live in very different containers: the ladder stacks
+     courts full-width (.ladder-courts is a column), while Round Robin lays
+     courts out 3-across in a grid of minmax(240px, 1fr). In a ~300px court,
+     two team names plus two 56px inputs, a "vs" and four gaps leave roughly
+     70px per name — so names wrapped to three lines, the two boxes ended up
+     different widths and heights, and long names spilled into the inputs.
+     Give each team its own full-width row instead. (These are ID-scoped, so
+     they beat the .ladder-* base rules below regardless of source order, and
+     they deliberately leave the <=640px block alone: it already stacks.) */
+  #scheduleSection .ladder-matchup {
+    flex-direction: column; align-items: stretch; gap: 0.4rem;
+  }
+  #scheduleSection .ladder-matchup .vs {
+    text-align: center; font-size: 0.65rem; padding: 0.05rem 0;
+  }
+  /* Without min-width:0 a flex item keeps min-width:auto, so a long name
+     refuses to shrink and overflows onto the score input. */
+  #scheduleSection .ladder-score-group .team { min-width: 0; }
+  /* Teams are tap targets only in "Pick winner" mode; here the score inputs
+     are, so don't advertise the box as clickable. */
+  #scheduleSection .ladder-matchup .team { cursor: default; }
+  #scheduleSection .ladder-matchup .team:hover { filter: none; }
+
   /* Ladder Styles */
   .ladder-courts { display: flex; flex-direction: column; gap: 0.6rem; }
   .ladder-court {
