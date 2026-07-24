@@ -596,7 +596,7 @@ function pickWinner(roundNum, courtIdx, team) {
   }
   // A tap is authoritative for winner mode; drop any stale score for this court.
   if (roundScores[roundNum]) delete roundScores[roundNum][courtIdx];
-  updateRoundStates();
+  updateRoundStates(true);
   saveState();
 }
 
@@ -702,7 +702,7 @@ function rrSyncCourt(round, ci) {
 
 function rrCheckCourtScore(round, ci) {
   rrSyncCourt(round, ci);
-  updateRoundStates();
+  updateRoundStates(true);
   saveState();
 }
 
@@ -874,17 +874,24 @@ function renderRRRoundTimer() {
   }
 }
 
-function updateRoundStates() {
+function updateRoundStates(animateChange) {
   // Find current round (first non-completed)
   let currentRound = null;
   for (let i = 1; i <= totalRounds; i++) {
     if (!isRoundComplete(i)) { currentRound = i; break; }
   }
 
-  // Captured before rrCurrentRound is overwritten below: the reorder is worth
-  // animating only when the current round actually moved. Initial render,
-  // restoreState, and score edits that leave the round alone stay instant.
-  const roundAdvanced = rrCurrentRound !== null && currentRound !== rrCurrentRound;
+  // Whether to animate is opt-in from the caller, never inferred from state:
+  // pickWinner and rrCheckCourtScore are the only places a human action can
+  // move the round, so only they pass animateChange=true. renderSchedule's
+  // internal call and restoreState's call always omit it, so first paint and
+  // page load stay instant — restoreState renders before roundWinners comes
+  // back (see js/state.js), so a state-only comparison there would see a
+  // spurious advance. Captured before rrCurrentRound is overwritten below.
+  // Comparing plainly, without a `rrCurrentRound !== null` guard, also
+  // animates un-tapping the final round's winner (currentRound moving from
+  // null back to N).
+  const roundAdvanced = !!animateChange && currentRound !== rrCurrentRound;
 
   // Auto-reset the round timer when the current round advances (mirrors the
   // ladder timer resetting on each new round). Reset in place so the freshly
