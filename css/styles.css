@@ -307,7 +307,31 @@
   #scheduleSection .schedule-header { order: -3; }
   #scheduleSection #currentRoundBanner { order: -2; }
   #scheduleSection .round.current-round { order: -1; }
-  #scheduleSection .round.round-completed { order: 1; }
+  /* order 1 is the divider's slot; completed rounds sit below it. `order` takes
+     integers only, so there is no value between the upcoming block (0) and the
+     divider — completed rounds move down to 2 instead. */
+  #scheduleSection .rounds-divider { order: 1; }
+  #scheduleSection .round.round-completed { order: 2; }
+
+  /* Mirrors .current-round-banner (see above) but muted, and with no pulsing
+     dot, so it reads as the same family of UI without competing with the
+     active-round banner for attention. */
+  .rounds-divider {
+    display: none;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid #252830; border-radius: 12px;
+    padding: 0.7rem 1.25rem; margin-bottom: 1.25rem;
+    align-items: center; gap: 0.6rem;
+  }
+  .rounds-divider-check { color: #6ee7b7; font-size: 0.85rem; font-weight: 700; }
+  .rounds-divider-text { font-size: 0.82rem; font-weight: 600; color: #7c8091; }
+  /* Shown only when there is something to separate AND rounds still to play.
+     "All rounds complete" is exactly the state with no .current-round, so the
+     second :has() suppresses the divider there — the main banner already says
+     "All N rounds complete" and a header beneath it would be redundant. */
+  #scheduleSection:has(.round.round-completed):has(.round.current-round)
+    .rounds-divider { display: flex; }
+
   .round-header {
     display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.85rem;
   }
@@ -831,6 +855,9 @@
        round cards out of flex fragmentation, which interacts badly with the
        break-inside: avoid below. */
     #scheduleSection { display: block; }
+    /* Print restores numeric order 1..N, so a divider sitting at its DOM
+       position would claim rounds are grouped when they are not. */
+    #scheduleSection .rounds-divider { display: none !important; }
     .leaderboard { margin-bottom: 0.3cm; }
     .leaderboard h2 { font-size: 11pt; color: #111; margin-bottom: 0.15cm; }
     .leaderboard-table {

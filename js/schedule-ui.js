@@ -925,6 +925,15 @@ function updateRoundStates() {
     }
   }
 
+  // Count after the toggles above, so this reflects the state just applied.
+  const dividerText = document.querySelector('#roundsDivider .rounds-divider-text');
+  if (dividerText) {
+    let doneCount = 0;
+    for (let i = 1; i <= totalRounds; i++) if (isRoundComplete(i)) doneCount++;
+    dividerText.textContent = 'Completed · ' + doneCount +
+      (doneCount === 1 ? ' round' : ' rounds');
+  }
+
   renderLeaderboard();
 }
 
@@ -1034,6 +1043,11 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
 
   let html = `<div class="schedule-header"><h2>Schedule</h2></div>`;
   html += '<div id="currentRoundBanner" class="current-round-banner"></div>';
+  // Sits between the upcoming and completed blocks via order: 1. CSS decides
+  // whether it is visible; updateRoundStates fills in the count.
+  html += '<div id="roundsDivider" class="rounds-divider">' +
+    '<span class="rounds-divider-check">✓</span>' +
+    '<span class="rounds-divider-text"></span></div>';
 
   for (const round of result.schedule) {
     const rNames = roundNamesMap[round.round] || names;
