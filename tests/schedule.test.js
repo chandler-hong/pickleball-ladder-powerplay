@@ -637,6 +637,25 @@ test('Late arrivals: generateBestSchedule honours options.joinRounds', () => {
   resetScheduleRng();
 });
 
+test('Late arrivals: maxMidByeSpread does not collapse to 0 on a single-round schedule', () => {
+  // Nobody is late in this test, but it lives here because it guards the
+  // arrival-round narrowing above. joinRounds defaults to all-1s, so on a
+  // one-round schedule every player's "arrival round" equals the only round
+  // being scored. A comparison that excluded every arriving player from that
+  // round would exclude everyone at once, leave lo === Infinity, and
+  // silently report a spread of 0 no matter how uneven the sit-outs actually
+  // are. Nobody here has arrived late, so nobody should ever be excluded,
+  // and maxMidByeSpread must agree with the plain byeSpread computed from
+  // the final counts.
+  setScheduleRng(mulberry32(808));
+  const g = makeGenders(6, 7);
+  const result = generateSchedule(13, 3, 1, g, true);
+  const score = scoreSchedule(result, 13, g);
+  assert(score.maxMidByeSpread === score.byeSpread,
+    `single-round maxMidByeSpread (${score.maxMidByeSpread}) must equal byeSpread (${score.byeSpread})`);
+  resetScheduleRng();
+});
+
 // --- Run --------------------------------------------------------------
 
 console.log('\n' + '='.repeat(60));

@@ -854,19 +854,25 @@ function scoreSchedule(result, n, genders) {
   const byeSpread = maxSitOut - minSitOut;
 
   // Mid-schedule bye fairness: worst spread at any point during the schedule.
-  // Counts voluntary byes only, and excludes a player's arrival round itself
-  // from the comparison (not just rounds before it): on that round they
-  // start at 0 voluntary byes by definition, so comparing them against
-  // players who've already accumulated several rounds' worth is
+  // Counts voluntary byes only, and excludes a player from the comparison on
+  // their own arrival round (not just rounds before it) — but only if they
+  // are a genuine late arrival (joins[i] > 1). On their arrival round a late
+  // arrival starts at 0 voluntary byes by definition, so comparing them
+  // against players who've already accumulated several rounds' worth is
   // apples-to-oranges — the only way to force the spread down would be to
   // bench whoever just walked in, which is the opposite of what this
-  // feature is for. The running count itself still starts incrementing on
-  // the arrival round (joins[p] <= round.round below); only the comparison
-  // window narrows. This reduces but cannot eliminate the noise: a late
-  // arrival's count necessarily starts at 0 while everyone else's has
-  // accumulated, so this metric has no absolute bound once someone joins
-  // late — it remains a useful comparative signal between candidates that
-  // share the same joinRounds. The absolute guarantee is byeSpread, above.
+  // feature is for. A player present since round 1, by contrast, has always
+  // had the same opportunity as everyone else to take a bye on "their"
+  // arrival round, so there is no asymmetry to correct for, and excluding
+  // them too would only hide a real sit-out imbalance. The running count
+  // itself still starts incrementing on the arrival round (joins[p] <=
+  // round.round below); only the comparison window narrows, and only for
+  // players who actually arrived late. This reduces but cannot eliminate
+  // the noise: a late arrival's count necessarily starts at 0 while
+  // everyone else's has accumulated, so this metric has no absolute bound
+  // once someone joins late — it remains a useful comparative signal
+  // between candidates that share the same joinRounds. The absolute
+  // guarantee is byeSpread, above.
   let maxMidByeSpread = 0;
   const runningByeCount = new Array(n).fill(0);
   for (const round of result.schedule) {
@@ -875,7 +881,7 @@ function scoreSchedule(result, n, genders) {
     });
     let lo = Infinity, hi = 0;
     for (let i = 0; i < n; i++) {
-      if (joins && joins[i] >= round.round) continue;
+      if (joins && joins[i] >= round.round && joins[i] > 1) continue;
       if (runningByeCount[i] < lo) lo = runningByeCount[i];
       if (runningByeCount[i] > hi) hi = runningByeCount[i];
     }
