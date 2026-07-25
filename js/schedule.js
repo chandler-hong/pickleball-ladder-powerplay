@@ -836,21 +836,50 @@ function greedyCourtGrouping(partnerships, recentCourt, recentPartner, opponentC
 // Evaluates opponent spread, partner spread, coverage, and gender balance.
 // -----------------------------------------------------------------
 function scoreSchedule(result, n, genders) {
-  const { partnerCount, opponentCount, sitOutCount } = result;
+  const { partnerCount, opponentCount, sitOutCount, voluntaryByeCount, joinRounds } = result;
+  // Bye fairness is judged on voluntary byes only. A bye forced by a late
+  // arrival is not unfairness, and scoring it as such would make every
+  // late-arrival schedule look permanently unfair — compareScores would then
+  // rank all candidates against an unreachable target and the optimiser would
+  // spend its whole budget chasing it, silently degrading partner and opponent
+  // diversity. Falls back to sitOutCount for externally built results.
+  const byeCounts = voluntaryByeCount || sitOutCount;
+  const joins = joinRounds || null;
   let maxOpp = 0, totalOppExcess = 0, neverMet = 0;
   let maxPartner = 0, totalPartnerExcess = 0;
   let genderBadCourts = 0;
   let partnerToOpp = 0;
-  const maxSitOut = sitOutCount ? Math.max(0, ...sitOutCount) : 0;
-  const minSitOut = sitOutCount ? Math.min(...sitOutCount) : 0;
+  const maxSitOut = byeCounts ? Math.max(0, ...byeCounts) : 0;
+  const minSitOut = byeCounts ? Math.min(...byeCounts) : 0;
   const byeSpread = maxSitOut - minSitOut;
 
-  // Mid-schedule bye fairness: track worst spread at any point during the schedule
+  // Mid-schedule bye fairness: worst spread at any point during the schedule.
+  // Counts voluntary byes only, and excludes a player's arrival round itself
+  // from the comparison (not just rounds before it): on that round they
+  // start at 0 voluntary byes by definition, so comparing them against
+  // players who've already accumulated several rounds' worth is
+  // apples-to-oranges — the only way to force the spread down would be to
+  // bench whoever just walked in, which is the opposite of what this
+  // feature is for. The running count itself still starts incrementing on
+  // the arrival round (joins[p] <= round.round below); only the comparison
+  // window narrows. This reduces but cannot eliminate the noise: a late
+  // arrival's count necessarily starts at 0 while everyone else's has
+  // accumulated, so this metric has no absolute bound once someone joins
+  // late — it remains a useful comparative signal between candidates that
+  // share the same joinRounds. The absolute guarantee is byeSpread, above.
   let maxMidByeSpread = 0;
   const runningByeCount = new Array(n).fill(0);
   for (const round of result.schedule) {
-    round.sitOuts.forEach(p => runningByeCount[p]++);
-    const midSpread = Math.max(...runningByeCount) - Math.min(...runningByeCount);
+    round.sitOuts.forEach(p => {
+      if (!joins || joins[p] <= round.round) runningByeCount[p]++;
+    });
+    let lo = Infinity, hi = 0;
+    for (let i = 0; i < n; i++) {
+      if (joins && joins[i] >= round.round) continue;
+      if (runningByeCount[i] < lo) lo = runningByeCount[i];
+      if (runningByeCount[i] > hi) hi = runningByeCount[i];
+    }
+    const midSpread = lo === Infinity ? 0 : hi - lo;
     if (midSpread > maxMidByeSpread) maxMidByeSpread = midSpread;
   }
 

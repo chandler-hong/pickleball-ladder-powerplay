@@ -581,6 +581,62 @@ test('Late arrivals: voluntaryByeCount and joinRounds survive generateBestSchedu
   resetScheduleRng();
 });
 
+test('Late arrivals: scoreSchedule measures byes on the voluntary counter', () => {
+  setScheduleRng(mulberry32(505));
+  const joinRounds = new Array(16).fill(1);
+  joinRounds[0] = 5;   // misses 4 rounds — would look wildly unfair on totals
+  const result = generateSchedule(16, 3, 10, makeGenders(8, 8), true, joinRounds);
+  const score = scoreSchedule(result, 16, makeGenders(8, 8));
+
+  const totalSpread = Math.max(...result.sitOutCount) - Math.min(...result.sitOutCount);
+  assert(totalSpread >= 2,
+    `sanity: totals should look unfair for a 4-round absence (got ${totalSpread})`);
+  assert(score.byeSpread <= 1,
+    `byeSpread must be measured on voluntary byes, so <= 1 (got ${score.byeSpread})`);
+  assert(score.byeSpread < totalSpread,
+    `byeSpread must be strictly lower than the totals-based spread, proving it is ` +
+    `measured on voluntary byes rather than totals (byeSpread ${score.byeSpread}, totalSpread ${totalSpread})`);
+  // maxMidByeSpread is deliberately NOT asserted <= 1 here. Player 0's
+  // voluntary-bye counter starts at 0 on their arrival round while everyone
+  // else's has already accumulated several rounds' worth, so a transient
+  // spread above 1 while they catch up is expected and correct — it is not
+  // a bug. Forcing it to <= 1 would require benching the person who just
+  // arrived, which is exactly the perverse behaviour this feature exists to
+  // avoid. Do not "fix" this by making late arrivals sit out more.
+  resetScheduleRng();
+});
+
+test('Late arrivals: scoreSchedule unchanged when nobody is late', () => {
+  const g = makeGenders(8, 8);
+  setScheduleRng(mulberry32(606));
+  const a = generateSchedule(16, 3, 10, g, true);
+  const sa = scoreSchedule(a, 16, g);
+  setScheduleRng(mulberry32(606));
+  const b = generateSchedule(16, 3, 10, g, true, new Array(16).fill(1));
+  const sb = scoreSchedule(b, 16, g);
+  assert(JSON.stringify(sa) === JSON.stringify(sb),
+    'scores must be identical with and without an all-1 joinRounds');
+  assert(sa.maxMidByeSpread <= 1,
+    `with nobody late, maxMidByeSpread must still hold to <= 1 (got ${sa.maxMidByeSpread})`);
+  resetScheduleRng();
+});
+
+test('Late arrivals: generateBestSchedule honours options.joinRounds', () => {
+  setScheduleRng(mulberry32(707));
+  const joinRounds = new Array(16).fill(1);
+  joinRounds[2] = 3;
+  const result = generateBestSchedule(16, 3, 10, makeGenders(8, 8), true,
+    { timeBudgetMs: 600, plateauMs: 300, repairMs: 60, joinRounds });
+  for (const round of result.schedule) {
+    if (round.round >= 3) continue;
+    const plays = round.courts.some(c => c.teamA.includes(2) || c.teamB.includes(2));
+    assert(!plays, `player 2 must not play round ${round.round}`);
+  }
+  checkNoDuplicates(result, 16);
+  checkAllCourtsHaveFourPlayers(result);
+  resetScheduleRng();
+});
+
 // --- Run --------------------------------------------------------------
 
 console.log('\n' + '='.repeat(60));
