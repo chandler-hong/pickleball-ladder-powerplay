@@ -106,7 +106,7 @@ function fixGenderTeamParity(partnerships, genders, partnerCount) {
   }
 }
 
-function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed) {
+function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed, joinRounds) {
   if (!Number.isInteger(numPlayers) || numPlayers <= 0) throw new Error(`numPlayers must be a positive integer (got ${numPlayers})`);
   if (!Number.isInteger(numCourts) || numCourts <= 0) throw new Error(`numCourts must be a positive integer (got ${numCourts})`);
   if (!Number.isInteger(numRounds) || numRounds <= 0) throw new Error(`numRounds must be a positive integer (got ${numRounds})`);
@@ -115,11 +115,38 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
   for (let i = 0; i < genders.length; i++) {
     if (genders[i] !== 'M' && genders[i] !== 'F') throw new Error(`genders[${i}] must be 'M' or 'F' (got ${JSON.stringify(genders[i])})`);
   }
+  // Late arrivals: joinRounds[i] is the 1-based round player i first plays.
+  // Optional — omitting it means everybody is present from round 1, which is
+  // the behaviour every existing caller relies on.
+  const joins = joinRounds === undefined || joinRounds === null
+    ? new Array(numPlayers).fill(1)
+    : joinRounds;
+  if (!Array.isArray(joins) || joins.length !== numPlayers) {
+    throw new Error(`joinRounds must be an array of length ${numPlayers} (got length ${joins && joins.length})`);
+  }
+  for (let i = 0; i < joins.length; i++) {
+    if (!Number.isInteger(joins[i]) || joins[i] < 1 || joins[i] > numRounds) {
+      throw new Error(`joinRounds[${i}] must be an integer between 1 and ${numRounds} (got ${JSON.stringify(joins[i])})`);
+    }
+  }
+  // Every round must still have enough present players to fill the courts.
+  for (let r = 1; r <= numRounds; r++) {
+    let available = 0;
+    for (let i = 0; i < numPlayers; i++) if (joins[i] <= r) available++;
+    if (available < numCourts * 4) {
+      throw new Error(`Round ${r} has only ${available} available players; ${numCourts} courts need ${numCourts * 4}`);
+    }
+  }
   const n = numPlayers;
   const playersPerRound = numCourts * 4;
   const numSitOuts = n - playersPerRound;
 
   const sitOutCount = new Array(n).fill(0);
+  // sitOutCount is the total a human sees ("N byes"); voluntaryByeCount excludes
+  // byes forced by a late arrival, and is what every fairness signal reads. A
+  // forced bye is not unfairness, and counting it as such would make the
+  // scheduler over-favour late arrivals for the rest of the session.
+  const voluntaryByeCount = new Array(n).fill(0);
   const partnerCount = Array.from({length: n}, () => new Array(n).fill(0));
   const opponentCount = Array.from({length: n}, () => new Array(n).fill(0));
   const courtCount = Array.from({length: n}, () => new Array(n).fill(0));
@@ -150,6 +177,12 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
     }
 
     const indices = Array.from({length: n}, (_, i) => i);
+    // Players who have not arrived yet are forced onto byes for this round.
+    // They are excluded from the candidate pool below, so the existing
+    // fairness/cooldown/co-bye logic only ever chooses among people present.
+    const forcedByes = new Set();
+    for (let i = 0; i < n; i++) if (joins[i] > r + 1) forcedByes.add(i);
+    const availableIndices = indices.filter(i => !forcedByes.has(i));
     const randKeys = indices.map(() => _rng());
     // Adaptive cooldown: set 2 less than the ideal gap so there are always
     // extra candidates to choose from, enabling diverse bye groupings.
@@ -182,23 +215,30 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
       if (aRecent && bRecent) {
         if (roundsSinceLastBye[a] !== roundsSinceLastBye[b]) return roundsSinceLastBye[b] - roundsSinceLastBye[a];
       }
-      if (sitOutCount[a] !== sitOutCount[b]) return sitOutCount[a] - sitOutCount[b];
+      if (voluntaryByeCount[a] !== voluntaryByeCount[b]) return voluntaryByeCount[a] - voluntaryByeCount[b];
       if (coByeScore[a] !== coByeScore[b]) return coByeScore[a] - coByeScore[b];
       return randKeys[a] - randKeys[b];
     };
 
-    const malesByPriority = indices.filter(i => genders[i] === 'M').sort(sitOutPriority);
-    const femalesByPriority = indices.filter(i => genders[i] === 'F').sort(sitOutPriority);
+    const malesByPriority = availableIndices.filter(i => genders[i] === 'M').sort(sitOutPriority);
+    const femalesByPriority = availableIndices.filter(i => genders[i] === 'F').sort(sitOutPriority);
     const totalM = malesByPriority.length;
     const totalF = femalesByPriority.length;
 
     let sitOuts;
     if (numSitOuts > 0) {
-      const globalMinSitOut = Math.min(...sitOutCount);
+      // Forced byes already occupy some of this round's non-playing slots;
+      // only the remainder are available for voluntary selection below.
+      const roundSitOuts = numSitOuts - forcedByes.size;
+      let globalMinSitOut = Infinity;
+      for (let i = 0; i < n; i++) {
+        if (joins[i] <= r + 1 && voluntaryByeCount[i] < globalMinSitOut) globalMinSitOut = voluntaryByeCount[i];
+      }
+      if (globalMinSitOut === Infinity) globalMinSitOut = 0;
       const idealCumMaleByes = (r + 1) * idealSitMPerRound;
 
       function evaluateSitM(sitM, skipMixed) {
-        const sitF = numSitOuts - sitM;
+        const sitF = roundSitOuts - sitM;
         const playM = totalM - sitM;
         const playF = totalF - sitF;
         if (sitF < 0 || sitF > totalF) return null;
@@ -212,15 +252,15 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
         let cooldownViolations = 0, unfair = 0, fairness = 0;
         for (let i = 0; i < sitM; i++) {
           if (roundsSinceLastBye[malesByPriority[i]] <= hardCooldown) cooldownViolations++;
-          if (sitOutCount[malesByPriority[i]] > globalMinSitOut) unfair++;
+          if (voluntaryByeCount[malesByPriority[i]] > globalMinSitOut) unfair++;
           // Squared fairness penalizes selecting players who have sat out more,
           // producing a more even distribution than a plain sum (N8).
-          fairness += (sitOutCount[malesByPriority[i]] + 1) * (sitOutCount[malesByPriority[i]] + 1);
+          fairness += (voluntaryByeCount[malesByPriority[i]] + 1) * (voluntaryByeCount[malesByPriority[i]] + 1);
         }
         for (let i = 0; i < sitF; i++) {
           if (roundsSinceLastBye[femalesByPriority[i]] <= hardCooldown) cooldownViolations++;
-          if (sitOutCount[femalesByPriority[i]] > globalMinSitOut) unfair++;
-          fairness += (sitOutCount[femalesByPriority[i]] + 1) * (sitOutCount[femalesByPriority[i]] + 1);
+          if (voluntaryByeCount[femalesByPriority[i]] > globalMinSitOut) unfair++;
+          fairness += (voluntaryByeCount[femalesByPriority[i]] + 1) * (voluntaryByeCount[femalesByPriority[i]] + 1);
         }
         const genderDev = Math.abs((cumMaleByes + sitM) - idealCumMaleByes);
         return { sitM, unfair, cooldownViolations, fairness, mixedBad, genderDev };
@@ -245,7 +285,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
 
       // First pass: respect preferMixed
       let candidates = [];
-      for (let sitM = Math.max(0, numSitOuts - totalF); sitM <= Math.min(numSitOuts, totalM); sitM++) {
+      for (let sitM = Math.max(0, roundSitOuts - totalF); sitM <= Math.min(roundSitOuts, totalM); sitM++) {
         const ev = evaluateSitM(sitM, false);
         if (ev) candidates.push(ev);
       }
@@ -257,7 +297,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
         best = pickBest(candidates);
         if (best.unfair > 0) {
           const relaxed = [];
-          for (let sitM = Math.max(0, numSitOuts - totalF); sitM <= Math.min(numSitOuts, totalM); sitM++) {
+          for (let sitM = Math.max(0, roundSitOuts - totalF); sitM <= Math.min(roundSitOuts, totalM); sitM++) {
             const ev = evaluateSitM(sitM, true);
             if (ev) relaxed.push(ev);
           }
@@ -268,7 +308,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
         }
       } else {
         // No mixed-valid options at all; use all options
-        for (let sitM = Math.max(0, numSitOuts - totalF); sitM <= Math.min(numSitOuts, totalM); sitM++) {
+        for (let sitM = Math.max(0, roundSitOuts - totalF); sitM <= Math.min(roundSitOuts, totalM); sitM++) {
           const ev = evaluateSitM(sitM, true);
           if (ev) candidates.push(ev);
         }
@@ -276,7 +316,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
       }
 
       const bestSitM = best.sitM;
-      const bestSitF = numSitOuts - bestSitM;
+      const bestSitF = roundSitOuts - bestSitM;
       cumMaleByes += bestSitM;
 
       // Choose WHICH players sit (given the per-gender counts) so bye partners
@@ -292,7 +332,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
             const aBtb = roundsSinceLastBye[a] === 1 ? 1 : 0;
             const bBtb = roundsSinceLastBye[b] === 1 ? 1 : 0;
             if (aBtb !== bBtb) return aBtb - bBtb;
-            if (sitOutCount[a] !== sitOutCount[b]) return sitOutCount[a] - sitOutCount[b];
+            if (voluntaryByeCount[a] !== voluntaryByeCount[b]) return voluntaryByeCount[a] - voluntaryByeCount[b];
             const aAdd = picked.reduce((t, p) => t + coByeCount[a][p], 0);
             const bAdd = picked.reduce((t, p) => t + coByeCount[b][p], 0);
             if (aAdd !== bAdd) return aAdd - bAdd;
@@ -312,9 +352,16 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
     } else {
       sitOuts = new Set();
     }
+    // Forced byes join the round's sit-out list so downstream consumers — the
+    // "On bye" line, the CSV export, sitOutCount — see them as byes, which is
+    // what they are from a player's point of view.
+    forcedByes.forEach(i => sitOuts.add(i));
 
     const playing = indices.filter(i => !sitOuts.has(i));
-    sitOuts.forEach(i => sitOutCount[i]++);
+    sitOuts.forEach(i => {
+      sitOutCount[i]++;
+      if (!forcedByes.has(i)) voluntaryByeCount[i]++;
+    });
 
     const poolM = _shuffle(playing.filter(i => genders[i] === 'M'));
     const poolF = _shuffle(playing.filter(i => genders[i] === 'F'));
@@ -531,7 +578,7 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
     }
   }
 
-  return { schedule, partnerCount, opponentCount, courtCount, sitOutCount, playCount, coByeCount };
+  return { schedule, partnerCount, opponentCount, courtCount, sitOutCount, voluntaryByeCount, playCount, coByeCount, joinRounds: joins };
 }
 
 // -----------------------------------------------------------------

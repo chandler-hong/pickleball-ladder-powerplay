@@ -437,6 +437,125 @@ test('Bye partners are varied — no pair sits out together more than once (smal
   resetScheduleRng();
 });
 
+// --- Late arrivals ---------------------------------------------------
+
+// Players absent for the first rounds must not appear in any court or bye-list
+// entry of those rounds, and must appear from their join round onward.
+function roundsPlayerAppears(result, playerIdx) {
+  const rounds = [];
+  for (const round of result.schedule) {
+    const inCourt = round.courts.some(c =>
+      c.teamA.includes(playerIdx) || c.teamB.includes(playerIdx));
+    if (inCourt) rounds.push(round.round);
+  }
+  return rounds;
+}
+
+// Voluntary byes only: a bye a player took while actually present.
+function voluntaryByeSpread(result, n, joinRounds) {
+  const v = new Array(n).fill(0);
+  for (const round of result.schedule) {
+    for (const p of round.sitOuts) {
+      if (joinRounds[p] <= round.round) v[p]++;
+    }
+  }
+  // Only players present for at least one round can be compared fairly.
+  const present = [];
+  for (let i = 0; i < n; i++) if (joinRounds[i] <= result.schedule.length) present.push(v[i]);
+  return { spread: Math.max(...present) - Math.min(...present), counts: v };
+}
+
+test('Late arrivals: absent players never appear before their join round', () => {
+  setScheduleRng(mulberry32(101));
+  const joinRounds = new Array(16).fill(1);
+  joinRounds[0] = 3;   // player 0 joins round 3
+  joinRounds[5] = 2;   // player 5 joins round 2
+  const result = generateSchedule(16, 3, 10, makeGenders(8, 8), true, joinRounds);
+
+  const p0 = roundsPlayerAppears(result, 0);
+  const p5 = roundsPlayerAppears(result, 5);
+  assert(!p0.includes(1) && !p0.includes(2), `player 0 must not play rounds 1-2 (played ${p0})`);
+  assert(!p5.includes(1), `player 5 must not play round 1 (played ${p5})`);
+  assert(p0.length > 0, 'player 0 must play at least once from round 3');
+  assert(p5.length > 0, 'player 5 must play at least once from round 2');
+  // And they must be listed as sitting out in the rounds they miss.
+  assert(result.schedule[0].sitOuts.includes(0), 'player 0 sits out round 1');
+  assert(result.schedule[1].sitOuts.includes(0), 'player 0 sits out round 2');
+  assert(result.schedule[0].sitOuts.includes(5), 'player 5 sits out round 1');
+  resetScheduleRng();
+});
+
+test('Late arrivals: every round still fields exactly courts*4 players', () => {
+  setScheduleRng(mulberry32(202));
+  const joinRounds = new Array(16).fill(1);
+  joinRounds[0] = 3; joinRounds[1] = 3; joinRounds[2] = 2;
+  const result = generateSchedule(16, 3, 10, makeGenders(8, 8), true, joinRounds);
+  checkAllCourtsHaveFourPlayers(result);
+  checkNoDuplicates(result, 16);
+  for (const round of result.schedule) {
+    const playing = round.courts.reduce((t, c) => t + c.teamA.length + c.teamB.length, 0);
+    assert(playing === 12, `round ${round.round} fielded ${playing}, expected 12`);
+  }
+  resetScheduleRng();
+});
+
+test('Late arrivals: forced byes excluded from fairness, counted in the display total', () => {
+  setScheduleRng(mulberry32(303));
+  const joinRounds = new Array(16).fill(1);
+  joinRounds[0] = 4;   // misses rounds 1-3
+  const result = generateSchedule(16, 3, 10, makeGenders(8, 8), true, joinRounds);
+
+  // Display total includes the 3 forced byes.
+  assert(result.sitOutCount[0] >= 3,
+    `total byes for player 0 should include 3 forced (got ${result.sitOutCount[0]})`);
+  // Voluntary counter excludes them.
+  assert(result.voluntaryByeCount[0] === result.sitOutCount[0] - 3,
+    `voluntary should be total minus 3 forced (total ${result.sitOutCount[0]}, ` +
+    `voluntary ${result.voluntaryByeCount[0]})`);
+  // Fairness holds on the voluntary counter, not the total.
+  const { spread } = voluntaryByeSpread(result, 16, result.joinRounds);
+  assert(spread <= 1, `voluntary bye spread should be <= 1 (got ${spread})`);
+  resetScheduleRng();
+});
+
+test('Late arrivals: omitting joinRounds is byte-identical to the old behaviour', () => {
+  const g = makeGenders(8, 8);
+  setScheduleRng(mulberry32(404));
+  const withoutArg = generateSchedule(16, 3, 10, g, true);
+  setScheduleRng(mulberry32(404));
+  const withAllOnes = generateSchedule(16, 3, 10, g, true, new Array(16).fill(1));
+  assert(JSON.stringify(withoutArg.schedule) === JSON.stringify(withAllOnes.schedule),
+    'all-1 joinRounds must produce the identical schedule to omitting the argument');
+  assert(JSON.stringify(withoutArg.sitOutCount) === JSON.stringify(withAllOnes.sitOutCount),
+    'sitOutCount must match');
+  // With nobody late the two counters are equal element-for-element.
+  assert(JSON.stringify(withAllOnes.sitOutCount) === JSON.stringify(withAllOnes.voluntaryByeCount),
+    'with nobody late, total and voluntary bye counts must be equal');
+  resetScheduleRng();
+});
+
+test('Late arrivals: joinRounds input validation', () => {
+  const g = makeGenders(8, 8);
+  assert(throws(() => generateSchedule(16, 3, 10, g, true, new Array(15).fill(1))),
+    'rejects joinRounds length mismatch');
+  assert(throws(() => generateSchedule(16, 3, 10, g, true, new Array(16).fill(0))),
+    'rejects joinRound below 1');
+  assert(throws(() => generateSchedule(16, 3, 10, g, true, new Array(16).fill(11))),
+    'rejects joinRound beyond numRounds');
+  const bad = new Array(16).fill(1); bad[3] = 2.5;
+  assert(throws(() => generateSchedule(16, 3, 10, g, true, bad)),
+    'rejects non-integer joinRound');
+});
+
+test('Late arrivals: too many absent to field the courts throws', () => {
+  const g = makeGenders(8, 8);
+  // 3 courts needs 12; marking 5 absent in round 1 leaves 11.
+  const joinRounds = new Array(16).fill(1);
+  for (let i = 0; i < 5; i++) joinRounds[i] = 2;
+  assert(throws(() => generateSchedule(16, 3, 10, g, true, joinRounds)),
+    'rejects a round with fewer available players than courts*4');
+});
+
 // --- Run --------------------------------------------------------------
 
 console.log('\n' + '='.repeat(60));
