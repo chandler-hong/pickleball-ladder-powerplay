@@ -556,6 +556,31 @@ test('Late arrivals: too many absent to field the courts throws', () => {
     'rejects a round with fewer available players than courts*4');
 });
 
+test('Late arrivals: voluntaryByeCount and joinRounds survive generateBestSchedule with repair enabled', () => {
+  // generateBestSchedule runs generateSchedule in a loop and then, unless
+  // options.skipRepair is set, hands the winner to repairSchedule2opt — the
+  // production default and what the UI actually calls. Both the multi-start
+  // loop and the repair path have to forward/rebuild joinRounds and
+  // voluntaryByeCount correctly, or a late arrival silently stops mattering
+  // the moment repair (or scoring built on top of it) touches the result.
+  setScheduleRng(mulberry32(505));
+  const joinRounds = new Array(16).fill(1);
+  joinRounds[0] = 3;   // misses rounds 1-2
+  const result = generateBestSchedule(16, 3, 10, makeGenders(8, 8), true,
+    { joinRounds, timeBudgetMs: 200, repairMs: 100 }); // skipRepair left unset: repair runs
+  assert(result.voluntaryByeCount !== undefined, 'voluntaryByeCount must survive repair');
+  assert(result.joinRounds !== undefined, 'joinRounds must survive repair');
+  assert(JSON.stringify(result.joinRounds) === JSON.stringify(joinRounds),
+    `joinRounds must reflect the caller-supplied array, not the nobody-late default ` +
+    `(got ${JSON.stringify(result.joinRounds)})`);
+  assert(result.sitOutCount[0] - result.voluntaryByeCount[0] === 2,
+    `player 0's 2 forced byes (rounds 1-2) must be excluded from voluntaryByeCount ` +
+    `(sitOutCount ${result.sitOutCount[0]}, voluntaryByeCount ${result.voluntaryByeCount[0]})`);
+  const p0 = roundsPlayerAppears(result, 0);
+  assert(!p0.includes(1) && !p0.includes(2), `player 0 must not play rounds 1-2 (played ${p0})`);
+  resetScheduleRng();
+});
+
 // --- Run --------------------------------------------------------------
 
 console.log('\n' + '='.repeat(60));

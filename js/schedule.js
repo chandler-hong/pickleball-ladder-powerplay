@@ -1020,11 +1020,18 @@ function compareScores(a, b) {
 // the four players on each affected court. Accept swaps that strictly
 // improve compareScores. Iterate until no improvement in one pass.
 // -----------------------------------------------------------------
-function rebuildCounts(schedule, n) {
+function rebuildCounts(schedule, n, joinRounds) {
   const partnerCount = Array.from({length: n}, () => new Array(n).fill(0));
   const opponentCount = Array.from({length: n}, () => new Array(n).fill(0));
   const courtCount = Array.from({length: n}, () => new Array(n).fill(0));
   const sitOutCount = new Array(n).fill(0);
+  // Recomputed from scratch every call (not copied from a caller's stale
+  // result) so this stays correct no matter what the schedule looks like —
+  // repair only ever swaps players between courts within a round, never who
+  // sits out, but deriving it fresh here means that isn't something callers
+  // need to trust.
+  const voluntaryByeCount = new Array(n).fill(0);
+  const joins = joinRounds || Array.from({length: n}, () => 1);
   const playCount = new Array(n).fill(0);
   const coByeCount = Array.from({length: n}, () => new Array(n).fill(0));
   for (const round of schedule) {
@@ -1044,14 +1051,17 @@ function rebuildCounts(schedule, n) {
       }
       cp.forEach(i => playCount[i]++);
     }
-    for (const p of round.sitOuts) sitOutCount[p]++;
+    for (const p of round.sitOuts) {
+      sitOutCount[p]++;
+      if (joins[p] <= round.round) voluntaryByeCount[p]++;
+    }
     for (let i = 0; i < round.sitOuts.length; i++)
       for (let j = i + 1; j < round.sitOuts.length; j++) {
         coByeCount[round.sitOuts[i]][round.sitOuts[j]]++;
         coByeCount[round.sitOuts[j]][round.sitOuts[i]]++;
       }
   }
-  return { partnerCount, opponentCount, courtCount, sitOutCount, playCount, coByeCount };
+  return { partnerCount, opponentCount, courtCount, sitOutCount, voluntaryByeCount, playCount, coByeCount, joinRounds: joins };
 }
 
 function courtsAreValidGender(court, genders) {
@@ -1072,7 +1082,7 @@ function partitionsOfFour(four) {
   ];
 }
 
-function _findOneImprovement(schedule, n, genders, curScore, deadlineMs) {
+function _findOneImprovement(schedule, n, genders, curScore, deadlineMs, joinRounds) {
   const start = Date.now();
   for (let ri = 0; ri < schedule.length; ri++) {
     if (Date.now() - start > deadlineMs) return null;
@@ -1101,7 +1111,7 @@ function _findOneImprovement(schedule, n, genders, curScore, deadlineMs) {
                 const trialRound = { round: round.round, sitOuts: round.sitOuts, courts: trialCourts };
                 const trialSchedule = schedule.slice();
                 trialSchedule[ri] = trialRound;
-                const trialCounts = rebuildCounts(trialSchedule, n);
+                const trialCounts = rebuildCounts(trialSchedule, n, joinRounds);
                 const trialResult = { schedule: trialSchedule, ...trialCounts };
                 const trialScore = scoreSchedule(trialResult, n, genders);
                 if (compareScores(trialScore, curScore) < 0) {
@@ -1120,19 +1130,24 @@ function _findOneImprovement(schedule, n, genders, curScore, deadlineMs) {
 function repairSchedule2opt(result, n, genders, options) {
   const maxPasses = (options && options.maxPasses) || 3;
   const deadlineMs = (options && options.deadlineMs) || 500;
+  // 2-opt only ever exchanges players between courts within the same round
+  // (see _findOneImprovement: trialRound keeps round.sitOuts unchanged), so
+  // who is absent never changes here. joinRounds is carried through as-is
+  // and re-paired with the (possibly reshuffled) schedule on every rebuild.
+  const joinRounds = result.joinRounds;
   const start = Date.now();
   let schedule = result.schedule.map(r => ({
     round: r.round,
     sitOuts: [...r.sitOuts],
     courts: r.courts.map(c => ({ teamA: [...c.teamA], teamB: [...c.teamB] })),
   }));
-  const counts = rebuildCounts(schedule, n);
+  const counts = rebuildCounts(schedule, n, joinRounds);
   let curResult = { schedule, ...counts };
   let curScore = scoreSchedule(curResult, n, genders);
   for (let pass = 0; pass < maxPasses; pass++) {
     const remaining = deadlineMs - (Date.now() - start);
     if (remaining <= 0) break;
-    const improvement = _findOneImprovement(curResult.schedule, n, genders, curScore, remaining);
+    const improvement = _findOneImprovement(curResult.schedule, n, genders, curScore, remaining, joinRounds);
     if (!improvement) break;
     curResult = improvement.result;
     curScore = improvement.score;
@@ -1158,6 +1173,7 @@ function generateBestSchedule(numPlayers, numCourts, numRounds, genders, preferM
   const plateauMs = (options && options.plateauMs) || Math.min(2000, timeBudgetMs / 3);
   const skipRepair = options && options.skipRepair;
   const repairMs = (options && options.repairMs) || Math.min(500, timeBudgetMs * 0.05);
+  const joinRounds = options && options.joinRounds;
   const start = Date.now();
   let lastImprovement = start;
   let bestResult = null;
@@ -1165,7 +1181,7 @@ function generateBestSchedule(numPlayers, numCourts, numRounds, genders, preferM
   let iterations = 0;
 
   do {
-    const result = generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed);
+    const result = generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed, joinRounds);
     const score = scoreSchedule(result, numPlayers, genders);
     iterations++;
 
@@ -1190,6 +1206,7 @@ function generateBestScheduleAsync(numPlayers, numCourts, numRounds, genders, pr
   const plateauMs = (options && options.plateauMs) || Math.min(2000, timeBudgetMs / 3);
   const skipRepair = options && options.skipRepair;
   const repairMs = (options && options.repairMs) || Math.min(500, timeBudgetMs * 0.05);
+  const joinRounds = options && options.joinRounds;
   const start = Date.now();
   let lastImprovement = start;
   let bestResult = null;
@@ -1199,7 +1216,7 @@ function generateBestScheduleAsync(numPlayers, numCourts, numRounds, genders, pr
   function runChunk() {
     const chunkEnd = Math.min(Date.now() + SCHEDULE_WEIGHTS.ASYNC_CHUNK_MS, start + timeBudgetMs);
     while (Date.now() < chunkEnd) {
-      const result = generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed);
+      const result = generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed, joinRounds);
       const score = scoreSchedule(result, numPlayers, genders);
       iterations++;
       if (!bestScore || compareScores(score, bestScore) < 0) {
