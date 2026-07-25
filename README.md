@@ -7,6 +7,8 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 ## Features
 
 ### Round Robin Mode
+- **Duplicate-name detection** — matching player names are flagged both as you type and when you press Generate, with a prompt to add a last initial so the leaderboard can tell two people apart; the check ignores case and surrounding whitespace
+- **Generate gates the schedule** — the schedule and round timer stay hidden until you press **Generate Schedule**; editing the roster beforehand retires a generated-but-unplayed schedule so it can't silently reappear stale, a tournament with results already recorded is left alone so mid-event substitution keeps working, and refreshing mid-tournament restores the schedule you had
 - **Smart scheduling** — multi-start optimizer generates hundreds of candidate schedules within an adaptive time budget and picks the best
 - **Post-processing 2-opt repair** — after the multi-start converges, a local-search pass exchanges players between courts in the same round to shave off residual partner repeats and role flips
 - **Fresh partners** — every player gets a new partner each round when the pool allows; with *Prefer mixed* on and a small minority gender, mixed courts take priority, so a partner may repeat rather than break up a mixed court
@@ -18,6 +20,7 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 - **Leaderboard** — auto-populates win/loss stats; when scores are entered it adds a **point-differential** column and uses it as the tiebreaker
 - **Per-round countdown timer** — set the round length (default 10 min), Pause / Resume / Reset; survives page refresh; auto-resets when the round advances and goes red/pulses when time's up
 - **Current round pinned to the top** — the round you're playing sits directly under the round timer, with upcoming rounds next and completed rounds tucked at the bottom, so you never scroll to reach the timer
+- **Smooth round transitions** — completing a round animates the reshuffle instead of snapping into place, and a muted `✓ Completed · N rounds` divider marks where played rounds begin; the motion respects `prefers-reduced-motion` and falls back to an instant change on browsers without the View Transitions API
 - **PDF and CSV export** — print-friendly layout and downloadable results
 
 ### Traditional Ladder Mode
@@ -54,7 +57,7 @@ A multi-start wrapper runs phases 1-3 hundreds of times within an adaptive time 
 | Partner repeats | 0 when the pool allows; with *Prefer mixed* on and a lopsided split, mixed courts take priority so partners can repeat (e.g. 6M/4F over 10 rounds → up to 2) |
 | Back-to-back partners | 0 — the same pair never partners in two consecutive rounds; any forced repeat is always spaced apart |
 | MM vs FF courts | 0 |
-| Bye spread | ≤ 1 (max byes − min byes across players) |
+| Bye spread | ≤ 1 after every round, not just at the end — no player receives an (N+1)th bye until everyone has had N |
 | Back-to-back byes | 0 |
 | Same-court pair streak | Typically ≤ 2 consecutive rounds; the generator strongly avoids 3-in-a-row and spaces repeat meetings apart. In very tight low-court configs with no byes (e.g. 12 players / 3 courts), an occasional streak of 3 can occur. |
 | Duplicate players on a court | 0 (hard invariant, verified by tests) |
@@ -66,13 +69,13 @@ The `tests/` directory contains a Node-based test harness with deterministic (se
 
 ```bash
 npm test              # run all suites (≈ 20s)
-npm run test:unit     # schedule smoke tests — 12 cases, 1430 assertions
+npm run test:unit     # schedule smoke tests — 18 cases, 3631 assertions
 npm run test:stress   # schedule end-to-end — 7 scenarios, 3s budget each
-npm run test:utils    # utils helpers — csvCell, guessGender, shuffle, pickRandomNames, pickleball score validation
-npm run test:ladder   # ladder logic — scoring, pairing, movement, leaderboard
+npm run test:utils    # utils helpers — 9 cases, 89 assertions (csvCell, guessGender, shuffle, pickRandomNames, pickleball score validation)
+npm run test:ladder   # ladder logic — 7 cases, 40 assertions (scoring, pairing, movement, leaderboard)
 ```
 
-The schedule tests cover input validation, duplicate-player invariants, gender rules across balanced/skewed pools, bye-fairness invariants, determinism (same seed produces the same schedule), and 2-opt repair correctness. The utils and ladder suites cover CSV-injection escaping, gender detection (including unisex deferral), pickleball score validation (win by 1 / win by 2, rejecting impossible scores), ladder score validation and up/down movement, and leaderboard stats (including the position-based Highest Court ranking).
+The schedule tests cover input validation, duplicate-player invariants, gender rules across balanced/skewed pools, bye-fairness invariants — including regression tests for the running, after-every-round guarantee described above — determinism (same seed produces the same schedule), and 2-opt repair correctness. The utils and ladder suites cover CSV-injection escaping, gender detection (including unisex deferral), pickleball score validation (win by 1 / win by 2, rejecting impossible scores), ladder score validation and up/down movement, and leaderboard stats (including the position-based Highest Court ranking).
 
 ## Tech stack
 
@@ -80,4 +83,4 @@ Pure vanilla HTML, CSS, and JavaScript. No frameworks, no build step, no runtime
 
 ## Credits
 
-Tool created by Chandler Hong and Claude Opus 4.8.
+Tool created by Chandler Hong and Claude Opus 5.
