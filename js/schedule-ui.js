@@ -874,6 +874,69 @@ function renderRRRoundTimer() {
   }
 }
 
+// --- Round-advance transition helpers ---------------------------------------
+// The visual order of the round cards comes from CSS `order` (see
+// css/styles.css): current round -1, upcoming 0, the completed divider 1,
+// completed rounds 2. One step is roughly one card height; anything further
+// crosses the whole upcoming block.
+function rrOrderBucket(done, isCurrent) {
+  if (done) return 2;
+  return isCurrent ? -1 : 0;
+}
+
+// Fixed names a stylesheet can address. `rr-round-<N>` cannot be targeted by
+// static CSS because N varies with the round, so cards needing the fade-only
+// treatment are renamed into this pool for the duration of the transition.
+// Four slots is well past what one result tap can move (at most one card
+// leaves the current slot and one arrives), so the overflow branch below is
+// defensive only. Keep this list and the rr-leaving-N rules in styles.css in
+// step: a name with no rule would morph across the page again.
+const RR_LEAVING_NAMES = ['rr-leaving-1', 'rr-leaving-2', 'rr-leaving-3', 'rr-leaving-4'];
+
+// Bumped per transition so a superseded transition's settle handler cannot
+// clobber the names the next one just assigned: starting a transition while
+// one is in flight skips (and so rejects) the old one, and that rejection
+// lands after the new transition has already renamed its cards.
+let rrVtGeneration = 0;
+
+// Puts every round card back on its own `rr-round-<N>`. The name is derived
+// from the element rather than remembered, so this doubles as the
+// post-transition restore and as a pre-flight sweep for stale rr-leaving-*
+// names, and it can never itself leave a duplicate behind. Duplicates matter:
+// view-transition-name has to be unique in the document, or the browser skips
+// the transition outright.
+function rrResetRoundTransitionNames() {
+  for (let i = 1; i <= totalRounds; i++) {
+    const el = document.getElementById(`round-${i}`);
+    if (el && el.style.viewTransitionName !== `rr-round-${i}`) {
+      el.style.viewTransitionName = `rr-round-${i}`;
+    }
+  }
+}
+
+// The cards whose order bucket moves more than one step — the ones that
+// would travel the height of the whole upcoming block (~1830px measured at 16
+// players / 3 courts / 10 rounds). View Transitions paint the moving snapshot
+// in an overlay above the page, so such a morph reads as a card rocketing
+// across the header and the leaderboard. Direction-agnostic on purpose:
+// completing the current round drops it below the divider (-1 -> 2), and
+// un-tapping a winner brings a completed round back up (2 -> -1, or 2 -> 0 for
+// a completed round that is not the new current one). The old bucket is read
+// from the classes still on the card, the new one from the state about to be
+// applied.
+function rrFarMovingRoundCards(currentRound) {
+  const far = [];
+  for (let i = 1; i <= totalRounds; i++) {
+    const el = document.getElementById(`round-${i}`);
+    if (!el) continue;
+    const from = rrOrderBucket(el.classList.contains('round-completed'),
+                               el.classList.contains('current-round'));
+    const to = rrOrderBucket(isRoundComplete(i), i === currentRound);
+    if (Math.abs(to - from) > 1) far.push(el);
+  }
+  return far;
+}
+
 function updateRoundStates(animateChange) {
   // Find current round (first non-completed)
   let currentRound = null;
@@ -952,7 +1015,26 @@ function updateRoundStates(animateChange) {
   // else — first paint, restore, editing a score without finishing a round —
   // applies instantly, exactly as before.
   if (roundAdvanced && document.startViewTransition) {
-    document.startViewTransition(applyRoundClasses);
+    // Never trust the previous transition's cleanup: a leaked rr-leaving-*
+    // would be a duplicate of the one assigned below, and the browser skips a
+    // transition whose names are not unique.
+    rrResetRoundTransitionNames();
+    const farCards = rrFarMovingRoundCards(currentRound);
+    if (farCards.length > RR_LEAVING_NAMES.length) {
+      // More long hops than fade slots: apply the change instantly rather than
+      // animate some cards and let the leftovers rocket across the page.
+      applyRoundClasses();
+    } else {
+      farCards.forEach((el, i) => { el.style.viewTransitionName = RR_LEAVING_NAMES[i]; });
+      const gen = ++rrVtGeneration;
+      const restore = () => { if (gen === rrVtGeneration) rrResetRoundTransitionNames(); };
+      // Both handlers, not just a success one: a transition that is skipped
+      // (another one started, tab hidden) or that rejects has to hand the real
+      // names back too, or the next transition inherits a duplicate
+      // rr-leaving-* and gets skipped itself. then(f, f) rather than
+      // finally(), so the rejection is handled instead of re-raised.
+      document.startViewTransition(applyRoundClasses).finished.then(restore, restore);
+    }
   } else {
     applyRoundClasses();
   }

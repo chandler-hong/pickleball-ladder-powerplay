@@ -313,6 +313,19 @@
   #scheduleSection .rounds-divider { order: 1; }
   #scheduleSection .round.round-completed { order: 2; }
 
+  /* `order` is an animatable <integer>, and .round above sets
+     `transition: all 0.3s ease`, so a card moving from the current slot (-1) to
+     the completed pile (2) does not just re-flow: it interpolates through 0 and
+     1, parking in the upcoming block and then in the divider's slot for ~60ms
+     each on the way down. Measured over CDP as computed order stepping
+     -1 -> 0 -> 1 -> 2 at t=0/66/108/186ms. The re-flow itself has to be
+     instant — the view transition below is what animates the move — so hold
+     `order` out of the transition while keeping the dimming and border fades
+     that `all` was there for. */
+  #scheduleSection .round {
+    transition-property: opacity, border-color, box-shadow, background-color;
+  }
+
   /* Mirrors .current-round-banner (see above) but muted, and with no pulsing
      dot, so it reads as the same family of UI without competing with the
      active-round banner for attention. */
@@ -1417,6 +1430,43 @@
     animation-duration: 350ms;
     animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }
+
+  /* A card whose order bucket moves more than one step — the round that just
+     completed dropping below the divider, or a completed round coming back up
+     when a winner is un-tapped — travels the height of the entire upcoming
+     block, measured at ~1830px on 16 players / 3 courts / 10 rounds. The morph
+     is painted in an overlay above the page, so it reads as the card rocketing
+     over the header and the leaderboard. updateRoundStates() in
+     js/schedule-ui.js renames those cards to rr-leaving-N for the duration of
+     the transition (static CSS cannot address rr-round-<N>, since N varies) so
+     they can be cross-faded in place instead. The arriving current round keeps
+     its positional morph: it only travels about one card height.
+
+     animation: none leaves the group at its base style, which the browser keeps
+     at the card's new position and size — that is what stops the travel. The
+     old/new pair then fades over it. Must stay after the
+     ::view-transition-group(*) rule above, whose duration it replaces, and
+     before the reduced-motion block below, which overrides it. One selector per
+     name in RR_LEAVING_NAMES. */
+  ::view-transition-group(rr-leaving-1),
+  ::view-transition-group(rr-leaving-2),
+  ::view-transition-group(rr-leaving-3),
+  ::view-transition-group(rr-leaving-4) { animation: none; }
+  ::view-transition-old(rr-leaving-1),
+  ::view-transition-old(rr-leaving-2),
+  ::view-transition-old(rr-leaving-3),
+  ::view-transition-old(rr-leaving-4) {
+    animation: rr-vt-fade-out 180ms ease-out both;
+  }
+  ::view-transition-new(rr-leaving-1),
+  ::view-transition-new(rr-leaving-2),
+  ::view-transition-new(rr-leaving-3),
+  ::view-transition-new(rr-leaving-4) {
+    animation: rr-vt-fade-in 180ms ease-out both;
+  }
+  /* Opacity only — any transform here would bring the travel back. */
+  @keyframes rr-vt-fade-out { to { opacity: 0; } }
+  @keyframes rr-vt-fade-in { from { opacity: 0; } }
 
   /* Reduced motion: apply the change with no animation at all. */
   @media (prefers-reduced-motion: reduce) {
