@@ -329,15 +329,15 @@
   /* Mirrors .current-round-banner (see above) but muted, and with no pulsing
      dot, so it reads as the same family of UI without competing with the
      active-round banner for attention. */
-  .rounds-divider {
+  #scheduleSection .rounds-divider {
     display: none;
     background: rgba(255,255,255,0.02);
     border: 1px solid #252830; border-radius: 12px;
     padding: 0.7rem 1.25rem; margin-bottom: 1.25rem;
     align-items: center; gap: 0.6rem;
   }
-  .rounds-divider-check { color: #6ee7b7; font-size: 0.85rem; font-weight: 700; }
-  .rounds-divider-text { font-size: 0.82rem; font-weight: 600; color: #7c8091; }
+  #scheduleSection .rounds-divider-check { color: #6ee7b7; font-size: 0.85rem; font-weight: 700; }
+  #scheduleSection .rounds-divider-text { font-size: 0.82rem; font-weight: 600; color: #7c8091; }
   /* Shown only when there is something to separate AND rounds still to play.
      "All rounds complete" is exactly the state with no .current-round, so the
      second :has() suppresses the divider there — the main banner already says
@@ -740,6 +740,9 @@
     .schedule-header h2 { font-size: 1.1rem; }
     .btn-export-pdf, .btn-export-csv { min-height: 40px; padding: 0.5rem 1rem; font-size: 0.8rem; }
     .current-round-banner { padding: 0.7rem 1rem; font-size: 0.85rem; flex-wrap: wrap; }
+    /* Mirrors .current-round-banner's padding above so the two bands sit at
+       the same horizontal inset on a phone. */
+    #scheduleSection .rounds-divider { padding: 0.7rem 1rem; }
     /* Round timer: drop onto its own full-width line and enlarge tap targets */
     .current-round-banner .current-round-timer-slot { margin-left: 0; width: 100%; }
     .round-timer { width: 100%; justify-content: flex-start; gap: 0.5rem 0.7rem; }

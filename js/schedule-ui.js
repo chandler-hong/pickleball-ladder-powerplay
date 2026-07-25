@@ -895,8 +895,11 @@ const RR_LEAVING_NAMES = ['rr-leaving-1', 'rr-leaving-2', 'rr-leaving-3', 'rr-le
 
 // Bumped per transition so a superseded transition's settle handler cannot
 // clobber the names the next one just assigned: starting a transition while
-// one is in flight skips (and so rejects) the old one, and that rejection
-// lands after the new transition has already renamed its cards.
+// one is in flight skips the old one, and `finished` settles either way —
+// it resolves even on a skip (`ready`, not `finished`, is what rejects on a
+// skip); the two-argument then() also catches a rejection if the update
+// callback throws. Either way the old settle handler still fires, landing
+// after the new transition has already renamed its cards.
 let rrVtGeneration = 0;
 
 // Puts every round card back on its own `rr-round-<N>`. The name is derived
@@ -1150,7 +1153,7 @@ function renderSchedule(result, names, courtNames, preserveWinners) {
   html += '<div id="currentRoundBanner" class="current-round-banner"></div>';
   // Sits between the upcoming and completed blocks via order: 1. CSS decides
   // whether it is visible; updateRoundStates fills in the count.
-  html += '<div id="roundsDivider" class="rounds-divider">' +
+  html += '<div id="roundsDivider" class="rounds-divider" aria-hidden="true">' +
     '<span class="rounds-divider-check">✓</span>' +
     '<span class="rounds-divider-text"></span></div>';
 
