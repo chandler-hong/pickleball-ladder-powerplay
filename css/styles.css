@@ -188,8 +188,9 @@
   [data-theme="light"] .late-check:checked + .late-label {
     /* The backdrop is the tint composited over the white card (#fdeee7), not
        the card alone, so the colour is measured against that composed backdrop.
-       #9a3412 on #fdeee7 measures 6.46:1. This pairing already exists at
-       css/styles.css:1381 and :1452 (.btn-export-pdf, .btn-early). */
+       #9a3412 on #fdeee7 measures 6.46:1. This pairing already exists with
+       [data-theme="light"] .btn-export-pdf and .btn-early, both using the same
+       rgba(234,88,12,…) tint family. */
     color: #9a3412; background: rgba(234,88,12,0.1);
     border-color: rgba(234,88,12,0.35);
   }
