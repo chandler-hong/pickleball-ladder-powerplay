@@ -250,7 +250,11 @@ function savePlayerData() {
     if (el) {
       const lateEl = document.getElementById(`late${i}`);
       const jrEl = document.getElementById(`joinRound${i}`);
-      const joinRound = lateEl && lateEl.checked ? (parseInt(jrEl && jrEl.value) || 1) : 1;
+      // parseInt(...) || 1 alone lets a negative through unchanged (a nonzero negative
+      // is truthy) — sanitize explicitly so a value below 1 can never reach the generator.
+      const parsed = parseInt(jrEl && jrEl.value);
+      const safeJoin = !isNaN(parsed) && parsed >= 1 ? parsed : 1;
+      const joinRound = lateEl && lateEl.checked ? safeJoin : 1;
       playerData.push({
         name: el.value,
         gender: gf && gf.checked ? 'F' : 'M',
@@ -376,7 +380,11 @@ function getJoinRounds() {
   for (let i = 0; i < currentPlayerCount; i++) {
     const lateEl = document.getElementById(`late${i}`);
     const jrEl = document.getElementById(`joinRound${i}`);
-    joins.push(lateEl && lateEl.checked ? (parseInt(jrEl && jrEl.value) || 1) : 1);
+    // parseInt(...) || 1 alone lets a negative through unchanged (a nonzero negative
+    // is truthy) — sanitize explicitly so a value below 1 can never reach the generator.
+    const parsed = parseInt(jrEl && jrEl.value);
+    const safeJoin = !isNaN(parsed) && parsed >= 1 ? parsed : 1;
+    joins.push(lateEl && lateEl.checked ? safeJoin : 1);
   }
   return joins;
 }
@@ -526,7 +534,17 @@ function collectValidationErrors() {
   const joins = getJoinRounds();
   if (!isNaN(numPlayers) && !isNaN(numCourts) && !isNaN(rounds) && rounds >= 1) {
     for (let i = 0; i < currentPlayerCount; i++) {
-      if (joins[i] > rounds) {
+      const lateEl = document.getElementById(`late${i}`);
+      const jrEl = document.getElementById(`joinRound${i}`);
+      // Re-read the raw typed value rather than trusting joins[i]: getJoinRounds()
+      // sanitizes an out-of-range value to a safe default before it can reach the
+      // generator, which would otherwise hide the very value we need to flag here —
+      // matching the generator's own guard (js/schedule.js) that rejects joins[i] < 1.
+      const rawJoin = parseInt(jrEl && jrEl.value);
+      if (lateEl && lateEl.checked && !isNaN(rawJoin) && rawJoin < 1) {
+        flagField(document.getElementById(`joinRound${i}`));
+        errors.push(`Player ${i + 1} has an invalid join round (${rawJoin}) — it must be 1 or greater`);
+      } else if (joins[i] > rounds) {
         flagField(document.getElementById(`joinRound${i}`));
         errors.push(`Player ${i + 1} joins at round ${joins[i]}, but there are only ${rounds} rounds`);
       }
@@ -601,6 +619,26 @@ function setupChanged() {
   retireSchedule();
   return true;
 }
+
+// generateBestScheduleAsync() (js/schedule.js) does its real work inside setTimeout
+// callbacks, chunked so the UI can repaint progress between iterations. That means it
+// never throws synchronously from the call in generate() below — a joinRounds guard
+// failure, or any other error inside generateSchedule()/repairSchedule2opt(), surfaces
+// later as an uncaught exception in a macrotask outside this file's call stack. A
+// try/catch wrapped around the call site cannot see that throw. The only boundary that
+// can is the window's global error event: every uncaught synchronous exception reaches
+// it, regardless of which turn of the event loop raised it. Without this handler, such
+// an exception leaves .generating-overlay on screen with no way to dismiss it — which is
+// exactly what a negative join round used to do before validate() learned to reject it.
+window.addEventListener('error', function(event) {
+  const overlay = document.querySelector('.generating-overlay');
+  if (!overlay) return;  // no generation in flight — this error isn't ours to handle
+  overlay.remove();
+  const message = (event.error && event.error.message) || event.message || 'an unexpected error occurred';
+  renderErrorBanner(['Schedule generation failed: ' + message + '. Please adjust the setup and try again.']);
+  const banner = document.getElementById('errorBanner');
+  if (banner) banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
 
 function generate() {
   const result = validate();
