@@ -127,6 +127,34 @@
     width: 100%; padding-left: 2rem; margin-top: -0.15rem;
   }
 
+  /* Late-arrival control. The round input only appears once the box is ticked —
+     a permanent extra field on every row would crowd a 40-row grid. */
+  .late-control { display: flex; align-items: center; gap: 0.3rem; }
+  .late-check { position: absolute; opacity: 0; pointer-events: none; }
+  .late-label {
+    cursor: pointer; font-size: 0.8rem; line-height: 1;
+    padding: 0.25rem 0.35rem; border-radius: 6px;
+    color: #5a5f72; border: 1px solid transparent;
+    transition: all 0.2s ease; user-select: none;
+  }
+  .late-label:hover { color: #a5b4fc; }
+  .late-check:checked + .late-label {
+    color: #fbbf24; background: rgba(251,191,36,0.12);
+    border-color: rgba(251,191,36,0.3);
+  }
+  .join-round-input {
+    display: none; width: 42px; padding: 0.25rem; border-radius: 6px;
+    text-align: center; border: 1px solid #2a2d37;
+    background: #1e2028; color: #e4e7ec;
+    font-family: inherit; font-size: 0.78rem; font-weight: 600; outline: none;
+    -webkit-appearance: none; -moz-appearance: textfield; appearance: textfield;
+  }
+  .join-round-input::-webkit-outer-spin-button,
+  .join-round-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .late-check:checked ~ .join-round-input { display: block; }
+  [data-theme="light"] .late-label { color: #9aa1ad; }
+  [data-theme="light"] .join-round-input { background: #fff; border-color: #d5d9e2; color: #1b1e26; }
+
   /* Court Number Inputs */
   .court-inputs { display: flex; gap: 0.75rem; flex-wrap: wrap; }
   .court-num-group { display: flex; align-items: center; gap: 0.5rem; }

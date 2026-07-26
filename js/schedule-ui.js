@@ -37,6 +37,12 @@ function buildPlayerGrid(count, skipSave) {
       `<label for="g${i}m" class="g-m">M</label>` +
       `<input type="radio" name="g${i}" id="g${i}f" value="F">` +
       `<label for="g${i}f" class="g-f">F</label>` +
+      `</div>` +
+      `<div class="late-control">` +
+      `<input type="checkbox" id="late${i}" class="late-check">` +
+      `<label for="late${i}" class="late-label" title="Arrives late — sits out until their join round">⏱</label>` +
+      `<input type="number" id="joinRound${i}" class="join-round-input" min="2" max="30" value="2" ` +
+      `aria-label="Player ${i + 1} joins from round">` +
       `</div>`;
     grid.appendChild(div);
     // Restore saved data
@@ -44,6 +50,12 @@ function buildPlayerGrid(count, skipSave) {
       document.getElementById(`p${i}`).value = playerData[i].name;
       if (playerData[i].gender === 'F') document.getElementById(`g${i}f`).checked = true;
       if (playerData[i].genderManual) div.dataset.genderManual = '1';
+      // Read-time default: payloads saved before this feature have no joinRound.
+      const jr = playerData[i].joinRound || 1;
+      if (jr > 1) {
+        document.getElementById(`late${i}`).checked = true;
+        document.getElementById(`joinRound${i}`).value = jr;
+      }
     }
     document.getElementById(`p${i}`).addEventListener('input', function() {
       this.classList.remove('input-error');
@@ -123,6 +135,20 @@ function buildPlayerGrid(count, skipSave) {
     };
     document.getElementById(`g${i}m`).addEventListener('change', dismissHint);
     document.getElementById(`g${i}f`).addEventListener('change', dismissHint);
+    const lateCheck = document.getElementById(`late${i}`);
+    const joinInput = document.getElementById(`joinRound${i}`);
+    const onLateChange = function() {
+      // Marking someone late changes the roster, so an unplayed schedule is
+      // retired exactly as a name or count edit would retire it.
+      setupChanged();
+      refreshValidationBanner();
+      saveState();
+    };
+    lateCheck.addEventListener('change', onLateChange);
+    joinInput.addEventListener('input', function() {
+      this.classList.remove('input-error');
+      onLateChange();
+    });
   }
   currentPlayerCount = count;
   updatePlayerGenderCount();
@@ -221,7 +247,17 @@ function savePlayerData() {
   for (let i = 0; i < currentPlayerCount; i++) {
     const el = document.getElementById(`p${i}`);
     const gf = document.getElementById(`g${i}f`);
-    if (el) playerData.push({ name: el.value, gender: gf && gf.checked ? 'F' : 'M', genderManual: el.parentElement.dataset.genderManual === '1' });
+    if (el) {
+      const lateEl = document.getElementById(`late${i}`);
+      const jrEl = document.getElementById(`joinRound${i}`);
+      const joinRound = lateEl && lateEl.checked ? (parseInt(jrEl && jrEl.value) || 1) : 1;
+      playerData.push({
+        name: el.value,
+        gender: gf && gf.checked ? 'F' : 'M',
+        genderManual: el.parentElement.dataset.genderManual === '1',
+        joinRound,
+      });
+    }
   }
 }
 
@@ -331,6 +367,18 @@ function getGenders() {
     genders.push(document.getElementById(`g${i}f`).checked ? 'F' : 'M');
   }
   return genders;
+}
+
+// 1-based round each player first plays. 1 = present from the start, which is
+// what an unchecked late box means.
+function getJoinRounds() {
+  const joins = [];
+  for (let i = 0; i < currentPlayerCount; i++) {
+    const lateEl = document.getElementById(`late${i}`);
+    const jrEl = document.getElementById(`joinRound${i}`);
+    joins.push(lateEl && lateEl.checked ? (parseInt(jrEl && jrEl.value) || 1) : 1);
+  }
+  return joins;
 }
 
 // --- Validation & Rendering ---
@@ -474,6 +522,27 @@ function collectValidationErrors() {
     errors.push('Rounds must be a number between 1 and 30');
   }
 
+  // Late arrivals: every round needs enough present players to fill the courts.
+  const joins = getJoinRounds();
+  if (!isNaN(numPlayers) && !isNaN(numCourts) && !isNaN(rounds) && rounds >= 1) {
+    for (let i = 0; i < currentPlayerCount; i++) {
+      if (joins[i] > rounds) {
+        flagField(document.getElementById(`joinRound${i}`));
+        errors.push(`Player ${i + 1} joins at round ${joins[i]}, but there are only ${rounds} rounds`);
+      }
+    }
+    for (let r = 1; r <= rounds; r++) {
+      let available = 0;
+      for (let i = 0; i < currentPlayerCount; i++) if (joins[i] <= r) available++;
+      if (available < numCourts * 4) {
+        errors.push(`Round ${r} has only ${available} of the ${numCourts * 4} players ` +
+          `${numCourts} courts need — drop to ${Math.floor(available / 4)} court` +
+          `${Math.floor(available / 4) === 1 ? '' : 's'}, or lower a join round`);
+        break;   // one message is enough; the first short round is the actionable one
+      }
+    }
+  }
+
   return {
     errors,
     result: { names: names.map((n, i) => n || `Player ${i + 1}`), rounds, numPlayers, numCourts }
@@ -580,7 +649,8 @@ function generate() {
       document.getElementById('scheduleSection').scrollIntoView({ behavior: 'smooth' });
       saveState();
       overlay.remove();
-    }
+    },
+    { joinRounds: getJoinRounds() }
   );
 }
 
