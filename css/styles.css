@@ -186,7 +186,11 @@
   }
   [data-theme="light"] .late-label:hover { color: #4338ca; border-color: rgba(99,102,241,0.45); }
   [data-theme="light"] .late-check:checked + .late-label {
-    color: #b45309; background: rgba(234,88,12,0.1);
+    /* The backdrop is the tint composited over the white card (#fdeee7), not
+       the card alone, so the colour is measured against that composed backdrop.
+       #9a3412 on #fdeee7 measures 6.46:1. This pairing already exists at
+       css/styles.css:1381 and :1452 (.btn-export-pdf, .btn-early). */
+    color: #9a3412; background: rgba(234,88,12,0.1);
     border-color: rgba(234,88,12,0.35);
   }
   [data-theme="light"] .late-hint {
