@@ -451,19 +451,12 @@ function roundsPlayerAppears(result, playerIdx) {
   return rounds;
 }
 
-// Voluntary byes only: a bye a player took while actually present.
-function voluntaryByeSpread(result, n, joinRounds) {
-  const v = new Array(n).fill(0);
-  for (const round of result.schedule) {
-    for (const p of round.sitOuts) {
-      if (joinRounds[p] <= round.round) v[p]++;
-    }
-  }
-  // Only players present for at least one round can be compared fairly.
-  const present = [];
-  for (let i = 0; i < n; i++) if (joinRounds[i] <= result.schedule.length) present.push(v[i]);
-  return { spread: Math.max(...present) - Math.min(...present), counts: v };
-}
+// (A local recompute of voluntary byes used to live here. It counted byes from the
+// join round onward and nothing else, which stopped being the definition once
+// arrivals began being seeded to the field's minimum on their join round — see
+// seedArrivalByeCounts. Tests now read result.voluntaryByeCount, the one value
+// the generator, rebuildCounts and scoreSchedule all agree on, or derive the
+// seed explicitly via lateByeBreakdown below.)
 
 test('Late arrivals: absent players never appear before their join round', () => {
   setScheduleRng(mulberry32(101));
@@ -499,23 +492,228 @@ test('Late arrivals: every round still fields exactly courts*4 players', () => {
   resetScheduleRng();
 });
 
+// Byes a single late player actually took from their join round onward, and the
+// arrival-round seed the generator should have started them on: the lowest
+// voluntary count among the players who were already there. Every other player
+// is present from round 1 and so is never seeded, which is what makes their raw
+// bye count over rounds 1..join-1 the right thing to take the minimum of.
+function lateByeBreakdown(result, n, late, joinRound) {
+  let takenAfterArrival = 0;
+  const byesBeforeArrival = new Array(n).fill(0);
+  for (const round of result.schedule) {
+    for (const p of round.sitOuts) {
+      if (round.round < joinRound) byesBeforeArrival[p]++;
+      else if (p === late) takenAfterArrival++;
+    }
+  }
+  let seed = Infinity;
+  for (let i = 0; i < n; i++) {
+    if (i !== late && byesBeforeArrival[i] < seed) seed = byesBeforeArrival[i];
+  }
+  return { takenAfterArrival, seed };
+}
+
 test('Late arrivals: forced byes excluded from fairness, counted in the display total', () => {
   setScheduleRng(mulberry32(303));
   const joinRounds = new Array(16).fill(1);
   joinRounds[0] = 4;   // misses rounds 1-3
   const result = generateSchedule(16, 3, 10, makeGenders(8, 8), true, joinRounds);
+  const { takenAfterArrival, seed } = lateByeBreakdown(result, 16, 0, 4);
 
   // Display total includes the 3 forced byes.
   assert(result.sitOutCount[0] >= 3,
     `total byes for player 0 should include 3 forced (got ${result.sitOutCount[0]})`);
-  // Voluntary counter excludes them.
-  assert(result.voluntaryByeCount[0] === result.sitOutCount[0] - 3,
-    `voluntary should be total minus 3 forced (total ${result.sitOutCount[0]}, ` +
-    `voluntary ${result.voluntaryByeCount[0]})`);
-  // Fairness holds on the voluntary counter, not the total.
-  const { spread } = voluntaryByeSpread(result, 16, result.joinRounds);
+  assert(result.sitOutCount[0] === 3 + takenAfterArrival,
+    `total byes should be 3 forced plus the ${takenAfterArrival} taken after arriving ` +
+    `(got ${result.sitOutCount[0]})`);
+  // Voluntary counter excludes them: it is the arrival-round seed plus only the
+  // byes taken while present. (The seed is what stops a newcomer starting at 0
+  // and being pushed to the front of the bye queue — see seedArrivalByeCounts.)
+  assert(result.voluntaryByeCount[0] === seed + takenAfterArrival,
+    `voluntary should be the arrival seed ${seed} plus the ${takenAfterArrival} byes ` +
+    `taken while present (got ${result.voluntaryByeCount[0]})`);
+  // The seed can only ever reflect byes that were actually handed out before the
+  // player arrived, so it cannot smuggle their 3 forced byes back in.
+  assert(seed <= 3, `arrival seed ${seed} cannot exceed the 3 rounds that elapsed`);
+  // Fairness holds on the generator's voluntary counter, not the total.
+  const vb = result.voluntaryByeCount;
+  const spread = Math.max(...vb) - Math.min(...vb);
   assert(spread <= 1, `voluntary bye spread should be <= 1 (got ${spread})`);
   resetScheduleRng();
+});
+
+test('Late arrivals: an arriving player is levelled with the field, not owed a backlog', () => {
+  // The design flaw this guards: excluding forced byes leaves a newcomer's
+  // voluntary counter at 0 while everyone else has accumulated several, and every
+  // bye-fairness signal ranks fewest-voluntary-byes first — so the person who just
+  // walked in went straight to the front of the bye queue. The counter must
+  // instead be seeded, on the arrival round only, to the lowest voluntary count
+  // among the players already present.
+  const g = makeGenders(8, 8);
+  let sawNonZeroSeed = false;
+  for (const jr of [2, 3, 5, 7, 8, 9, 10]) {
+    for (const seed of [11, 505]) {
+      const joinRounds = new Array(16).fill(1);
+      joinRounds[0] = jr;
+      setScheduleRng(mulberry32(seed));
+      const result = generateSchedule(16, 3, 10, g, true, joinRounds);
+      resetScheduleRng();
+      const b = lateByeBreakdown(result, 16, 0, jr);
+      if (b.seed > 0) sawNonZeroSeed = true;
+      assert(result.voluntaryByeCount[0] === b.seed + b.takenAfterArrival,
+        `join ${jr} seed ${seed}: voluntary count ${result.voluntaryByeCount[0]} should be the ` +
+        `min-incumbent seed ${b.seed} plus ${b.takenAfterArrival} byes taken while present`);
+    }
+  }
+  // The join rounds above have to include cases where the field really had banked
+  // byes, or the assertion is satisfied by a seed of 0 and proves nothing.
+  assert(sawNonZeroSeed,
+    'at least one join round must land after the field has banked a bye, otherwise ' +
+    'every seed is 0 and this test passes vacuously');
+  // Nobody late: the seeding must not move a single counter.
+  setScheduleRng(mulberry32(11));
+  const plain = generateSchedule(16, 3, 10, g, true);
+  resetScheduleRng();
+  assert(JSON.stringify(plain.voluntaryByeCount) === JSON.stringify(plain.sitOutCount),
+    'with nobody late, seeding must be a complete no-op');
+});
+
+test('Late arrivals: the latecomer is benched at the same rate as everyone else', () => {
+  // Before the arrival seeding, a player joining round 7 of 10 (16p/3c) played
+  // only 2 of their 4 available rounds — 50% benched against ~21% for everyone
+  // else — because they had to "catch up" on byes they were never there to take.
+  // The rate is compared in aggregate over every join round, because for a short
+  // window it is quantised: you cannot give somebody 1.5 byes over 6 rounds.
+  const configs = [
+    { p: 16, c: 3, r: 10, m: 8,  f: 8  },
+    { p: 20, c: 4, r: 10, m: 10, f: 10 },
+    { p: 24, c: 5, r: 10, m: 12, f: 12 },
+    { p: 16, c: 2, r: 12, m: 8,  f: 8  },  // half the field sits every round
+  ];
+  const seeds = [11, 505, 4242];
+  let allLateByes = 0, allLateRounds = 0, allOtherByes = 0, allOtherRounds = 0;
+  for (const cfg of configs) {
+    const genders = makeGenders(cfg.m, cfg.f);
+    const numSitOuts = cfg.p - cfg.c * 4;
+    let lateByes = 0, lateRounds = 0, otherByes = 0, otherRounds = 0;
+    for (let jr = 2; jr <= cfg.r; jr++) {
+      for (const seed of seeds) {
+        const joinRounds = new Array(cfg.p).fill(1);
+        joinRounds[0] = jr;
+        setScheduleRng(mulberry32(seed));
+        const result = generateSchedule(cfg.p, cfg.c, cfg.r, genders, true, joinRounds);
+        resetScheduleRng();
+        const window = cfg.r - jr + 1;
+        let took = 0;
+        for (const round of result.schedule) {
+          if (round.round >= jr && round.sitOuts.includes(0)) took++;
+        }
+        lateByes += took; lateRounds += window;
+        for (let i = 1; i < cfg.p; i++) { otherByes += result.sitOutCount[i]; otherRounds += cfg.r; }
+        // Per case: never more byes than a full share of the window, rounded up.
+        // 16p/2c and other very-high-bye configs are exempt — there the field's
+        // own byes are so dense that equal totals and equal rates genuinely
+        // conflict, and equal totals is the guarantee this tool makes.
+        if (numSitOuts * 2 < cfg.p) {
+          const cap = Math.ceil(window * numSitOuts / cfg.p);
+          assert(took <= cap,
+            `${cfg.p}p/${cfg.c}c join ${jr} seed ${seed}: latecomer took ${took} byes in ` +
+            `${window} available rounds, more than the ${cap} a full share allows`);
+        }
+      }
+    }
+    const lateRate = lateByes / lateRounds;
+    const otherRate = otherByes / otherRounds;
+    assert(lateRate <= otherRate * 1.3,
+      `${cfg.p}p/${cfg.c}c/${cfg.r}r: latecomer benched ${(lateRate * 100).toFixed(1)}% of their ` +
+      `available rounds vs ${(otherRate * 100).toFixed(1)}% for everyone else`);
+    allLateByes += lateByes; allLateRounds += lateRounds;
+    allOtherByes += otherByes; allOtherRounds += otherRounds;
+  }
+  // Measured across these 4 configs x every join round x 3 seeds: 1.49x the field's
+  // rate before the arrival seeding, 1.16x after. The residual is the quantisation
+  // above plus the tool's equal-totals guarantee, which for a short window genuinely
+  // pulls against equal rates.
+  const lateRate = allLateByes / allLateRounds;
+  const otherRate = allOtherByes / allOtherRounds;
+  assert(lateRate <= otherRate * 1.25,
+    `overall: latecomer benched ${(lateRate * 100).toFixed(1)}% of available rounds vs ` +
+    `${(otherRate * 100).toFixed(1)}% for everyone else`);
+});
+
+test('Late arrivals: final voluntary bye spread stays tight for every join round', () => {
+  // Unbounded before the seeding fix: on 16p/3c/10r the final spread reached 2 at
+  // join rounds 8-9 and 3 at join round 10, because a player present for k rounds
+  // could not accumulate a 10-round player's byes. Levelling them on arrival caps
+  // it at 1 — except for someone who joins for the final round only, who can
+  // finish 2 *below* the busiest player (they were seeded at the field's minimum
+  // and had a single round in which to take a bye). That direction costs them
+  // nothing: fewer byes means more games.
+  const configs = [
+    { p: 16, c: 3, r: 10, m: 8,  f: 8  },
+    { p: 20, c: 4, r: 10, m: 10, f: 10 },
+    { p: 13, c: 3, r: 11, m: 6,  f: 7  },
+    { p: 24, c: 5, r: 10, m: 12, f: 12 },
+    { p: 16, c: 2, r: 12, m: 8,  f: 8  },
+  ];
+  for (const cfg of configs) {
+    const genders = makeGenders(cfg.m, cfg.f);
+    for (let jr = 2; jr <= cfg.r; jr++) {
+      for (const seed of [11, 505]) {
+        for (const mixed of [true, false]) {
+          const joinRounds = new Array(cfg.p).fill(1);
+          joinRounds[0] = jr;
+          setScheduleRng(mulberry32(seed));
+          const result = generateSchedule(cfg.p, cfg.c, cfg.r, genders, mixed, joinRounds);
+          resetScheduleRng();
+          const vb = result.voluntaryByeCount;
+          const spread = Math.max(...vb) - Math.min(...vb);
+          const limit = jr < cfg.r ? 1 : 2;
+          assert(spread <= limit,
+            `${cfg.p}p/${cfg.c}c/${cfg.r}r join ${jr} seed ${seed} mixed=${mixed}: final ` +
+            `voluntary bye spread ${spread} > ${limit}`);
+        }
+      }
+    }
+  }
+});
+
+test('Late arrivals: rebuildCounts and scoreSchedule agree with the incremental count', () => {
+  // Three places compute "voluntary byes": generateSchedule increments as it goes,
+  // rebuildCounts re-derives from a finished schedule for the 2-opt repair path,
+  // and scoreSchedule walks the rounds again for maxMidByeSpread. The arrival seed
+  // changes what the number means, so all three have to apply it — a silent
+  // disagreement would make repair score a schedule on different byes than the
+  // generator built it with.
+  const g = makeGenders(8, 8);
+  for (const jr of [2, 3, 5, 7, 9, 10]) {
+    for (const seed of [909, 505]) {
+      const joinRounds = new Array(16).fill(1);
+      joinRounds[0] = jr;
+      joinRounds[9] = Math.max(2, jr - 1);   // two arrivals, on different rounds
+      setScheduleRng(mulberry32(seed));
+      const result = generateSchedule(16, 3, 10, g, true, joinRounds);
+      resetScheduleRng();
+      // repairSchedule2opt rebuilds every count from the schedule via rebuildCounts.
+      const repaired = repairSchedule2opt(result, 16, g, { deadlineMs: 50 });
+      assert(JSON.stringify(repaired.voluntaryByeCount) === JSON.stringify(result.voluntaryByeCount),
+        `join ${jr} seed ${seed}: rebuildCounts must reproduce the incremental voluntary count ` +
+        `(incremental ${result.voluntaryByeCount}, rebuilt ${repaired.voluntaryByeCount})`);
+      assert(JSON.stringify(repaired.sitOutCount) === JSON.stringify(result.sitOutCount),
+        `join ${jr} seed ${seed}: rebuilt sitOutCount must still be the unseeded total`);
+      // scoreSchedule's running count must land on the same final numbers: the
+      // spread it sees on the last round is the final spread, so the worst
+      // running spread can never come in below it.
+      const score = scoreSchedule(result, 16, g);
+      const vb = result.voluntaryByeCount;
+      assert(score.byeSpread === Math.max(...vb) - Math.min(...vb),
+        `join ${jr} seed ${seed}: score.byeSpread must be the voluntary spread`);
+      assert(score.maxMidByeSpread >= score.byeSpread,
+        `join ${jr} seed ${seed}: running voluntary spread (${score.maxMidByeSpread}) must reach ` +
+        `the final spread (${score.byeSpread}) — if it cannot, the two are counting ` +
+        `different things`);
+    }
+  }
 });
 
 test('Late arrivals: omitting joinRounds is byte-identical to the old behaviour', () => {
@@ -573,9 +771,14 @@ test('Late arrivals: voluntaryByeCount and joinRounds survive generateBestSchedu
   assert(JSON.stringify(result.joinRounds) === JSON.stringify(joinRounds),
     `joinRounds must reflect the caller-supplied array, not the nobody-late default ` +
     `(got ${JSON.stringify(result.joinRounds)})`);
-  assert(result.sitOutCount[0] - result.voluntaryByeCount[0] === 2,
-    `player 0's 2 forced byes (rounds 1-2) must be excluded from voluntaryByeCount ` +
-    `(sitOutCount ${result.sitOutCount[0]}, voluntaryByeCount ${result.voluntaryByeCount[0]})`);
+  const { takenAfterArrival, seed } = lateByeBreakdown(result, 16, 0, 3);
+  assert(result.sitOutCount[0] === 2 + takenAfterArrival,
+    `player 0's total must be their 2 forced byes (rounds 1-2) plus the ${takenAfterArrival} ` +
+    `taken after arriving (got ${result.sitOutCount[0]})`);
+  assert(result.voluntaryByeCount[0] === seed + takenAfterArrival,
+    `player 0's 2 forced byes (rounds 1-2) must be excluded from voluntaryByeCount, which is ` +
+    `the arrival seed ${seed} plus ${takenAfterArrival} (sitOutCount ${result.sitOutCount[0]}, ` +
+    `voluntaryByeCount ${result.voluntaryByeCount[0]})`);
   const p0 = roundsPlayerAppears(result, 0);
   assert(!p0.includes(1) && !p0.includes(2), `player 0 must not play rounds 1-2 (played ${p0})`);
   resetScheduleRng();
@@ -596,13 +799,14 @@ test('Late arrivals: scoreSchedule measures byes on the voluntary counter', () =
   assert(score.byeSpread < totalSpread,
     `byeSpread must be strictly lower than the totals-based spread, proving it is ` +
     `measured on voluntary byes rather than totals (byeSpread ${score.byeSpread}, totalSpread ${totalSpread})`);
-  // maxMidByeSpread is deliberately NOT asserted <= 1 here. Player 0's
-  // voluntary-bye counter starts at 0 on their arrival round while everyone
-  // else's has already accumulated several rounds' worth, so a transient
-  // spread above 1 while they catch up is expected and correct — it is not
-  // a bug. Forcing it to <= 1 would require benching the person who just
-  // arrived, which is exactly the perverse behaviour this feature exists to
-  // avoid. Do not "fix" this by making late arrivals sit out more.
+  // maxMidByeSpread is deliberately NOT asserted <= 1 here. Player 0 is levelled
+  // with the field on their arrival round rather than starting at 0 (see
+  // seedArrivalByeCounts), which bounds the *final* spread — asserted above — but
+  // the seed is the field's minimum, so while the rest of the field advances past
+  // it a transient running spread of 2 is expected and correct. Forcing it to <= 1
+  // would require benching the person who just arrived, which is exactly the
+  // perverse behaviour this feature exists to avoid. Do not "fix" this by making
+  // late arrivals sit out more.
   resetScheduleRng();
 });
 

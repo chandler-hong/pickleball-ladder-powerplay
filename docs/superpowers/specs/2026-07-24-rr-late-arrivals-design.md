@@ -52,9 +52,15 @@ This is the load-bearing decision in the design.
 
 `sitOutCount[i]` (incremented at `js/schedule.js:317`) drives every fairness signal: `globalMinSitOut` (`:197`), the `unfair` count (`:215`, `:222`), and the squared `fairness` penalty. If forced byes incremented it, a late player would look as though they had already taken several byes, and the scheduler would then over-favour them for the rest of the session — distorting everybody else's byes to compensate for something that was never unfair.
 
-So forced byes are tracked in a separate counter and are excluded from all fairness comparisons. `sitOutCount` continues to mean *voluntary* byes.
+So forced byes are tracked in a separate counter, `voluntaryByeCount`, and are excluded from all fairness comparisons. `sitOutCount` continues to mean **total** byes — forced and voluntary — because that is what a player sees on the schedule; it is `voluntaryByeCount` that every fairness signal reads. Getting these two the wrong way round is the most likely bug in this feature; see the table below.
 
-So forced byes are tracked in a separate counter and are excluded from all fairness comparisons.
+### Arrivals must be levelled, not left owing byes
+
+Excluding forced byes has a consequence that this design originally missed, and it is a flaw in the design rather than in any implementation of it. An arriving player's `voluntaryByeCount` is `0`, while everyone already there has accumulated several — and every fairness signal ranks *fewest voluntary byes first* (`sitOutPriority`, `globalMinSitOut` / `unfair`, `pickSitters`). So the person who just walked in went straight to the front of the bye queue and was benched repeatedly until they "caught up". Measured on 16 players / 3 courts / 10 rounds, 8M/8F: a player joining round 7 played 2 of their 4 available rounds — 50% benched, against ~21% for everybody else. The exact opposite of the feature's purpose.
+
+The fix is to treat an arrival as *caught up* rather than *owed byes*: on the round they first become available — once, before that round's bye selection — their `voluntaryByeCount` is seeded to the **minimum voluntary count among the players already present**. From then on they take byes at the same rate as everyone else instead of absorbing a backlog. The minimum is chosen deliberately: it is the count carried by whoever has been there all along and been luckiest with byes, so the newcomer is never worse off than the best-off incumbent.
+
+Three places compute "voluntary byes" and all three must apply the seeding identically, or repair would score a schedule on different numbers than the generator built it with: `generateSchedule` (incrementally), `rebuildCounts` (re-derived from a finished schedule for the 2-opt path) and `scoreSchedule`'s `maxMidByeSpread` walk. They share one function, `seedArrivalByeCounts`, for exactly that reason. With nobody late it is a complete no-op — no player satisfies `joinRound === round` for any round after the first, and it makes no RNG call, so a seeded schedule is byte-identical to one generated without `joinRounds` at all.
 
 ### Two counters, and which consumer reads which
 
@@ -71,7 +77,7 @@ When nobody is late the two arrays are equal element-for-element, so every exist
 
 Two further consequences:
 
-- The repo's stated guarantee becomes **"bye spread ≤ 1 after every round, measured over rounds in which the player was present."** `README.md`'s Scheduling-guarantees table needs that qualification.
+- The repo's stated guarantee needs qualifying in `README.md`'s Scheduling-guarantees table, and the qualification is weaker than "≤ 1 after every round, measured over rounds in which the player was present" — that is not something this design delivers. What was measured, after the arrival seeding above, over 8 configs × 10 seeds × both `preferMixed` settings: the **final** voluntary spread stays ≤ 1 whenever the arrival plays at least two rounds, and reaches 2 for someone joining for the final round only (in their favour — fewer byes, more games). The **running** spread can reach 2 while the rest of the field advances past the newcomer's seed. These are measurements, not proofs, and the table says so.
 - `restoreState` assigns `playerData = state.playerData || []` wholesale (`js/state.js:60`), so entries saved by earlier versions simply lack the key. The `|| 1` default must therefore be applied **at read time** — in `buildPlayerGrid` (which reads `playerData[i].name` / `.gender` / `.genderManual` at `js/schedule-ui.js:44-46`) and wherever the `joinRounds` array is assembled — rather than by back-filling the restored array. Mutating on restore would work too, but read-time defaulting cannot be defeated by a payload that skipped the migration.
 
 ### Feasibility inside the generator
@@ -102,7 +108,7 @@ PLAYERS                                   8M · 8F
  4.  Kevin Savage   [M][F]  ⏱
 ```
 
-Toggling late, or changing a join round, is a setup change and so must call `setupChanged()` — retiring an unplayed schedule exactly like a name or count edit, and leaving an in-progress tournament alone.
+Toggling late, or changing a join round, is a setup change and so must call `setupChanged()` — retiring an unplayed schedule exactly like a name or count edit, and leaving an in-progress tournament alone. It must also re-run `checkGenderWarning()`, which has to judge the 3M/1F parity **per round over the players actually present** rather than once over the whole roster. Otherwise the note misses precisely the case its own text describes: 8M/8F on 3 courts with 3 men and 1 woman marked late is a comfortable 8M/8F on paper, but round 1 is 5M/7F with no byes to spare and a 1M/3F court is forced. Rounds after the last join round always have the full roster, so inspecting rounds `1..max(joinRound)` covers every distinct availability profile — and with nobody late that maximum is 1, which is the old whole-roster check exactly. Rounds that cannot field the courts are skipped; those are Validation's message, not this one's.
 
 ## Edge cases
 
@@ -124,13 +130,15 @@ This is pure scheduling logic, so unlike recent CSS work it is properly unit-tes
 1. **Absence respected** — a player with `joinRound: 3` appears in no court and no team in rounds 1-2, and does appear from round 3 onward.
 2. **Courts always full** — every round still fields exactly `numCourts * 4` players, with late arrivals present.
 3. **No duplicates** — the existing duplicate-player invariant holds with late arrivals.
-4. **Fairness excludes forced byes** — voluntary-bye spread stays ≤ 1 after every round among players who were available, while a late player's *total* byes may legitimately exceed everyone else's.
-5. **Display vs fairness split** — `result.sitOutCount` reports total byes including forced ones, and does not equal the fairness counter when someone is late.
-6. **Gender rules hold** — no MM-vs-FF, and the `preferMixed` guarantees behave as they do today.
-7. **No-op equivalence** — with `joinRounds` all `1`, or omitted entirely, output is identical to the current generator for the same seed. This is the regression guard for the whole change.
-8. **Validation** — over-capacity configs are rejected; out-of-range join rounds are rejected.
+4. **Fairness excludes forced byes** — the *final* voluntary-bye spread stays ≤ 1 (2 for an arrival who plays only the last round), while a late player's *total* byes may legitimately exceed everyone else's. Not asserted after every round: the running voluntary spread can reach 2 while the field advances past a newcomer's arrival seed.
+5. **Arrivals are not made to catch up** — a latecomer's benched *rate* over the rounds they were present is comparable to the field's, not double it, and they never take more byes in that window than a full share of it rounded up. This is the regression guard for the design flaw described above; it fails loudly on the pre-seeding generator.
+6. **One definition of "voluntary"** — `generateSchedule`'s incremental counter, `rebuildCounts`' recompute and `scoreSchedule`'s running walk produce the same numbers for the same schedule. A silent disagreement here means repair scores a schedule on byes the generator did not build it with.
+7. **Display vs fairness split** — `result.sitOutCount` reports total byes including forced ones, and does not equal the fairness counter when someone is late.
+8. **Gender rules hold** — no MM-vs-FF, and the `preferMixed` guarantees behave as they do today.
+9. **No-op equivalence** — with `joinRounds` all `1`, or omitted entirely, output is identical to the current generator for the same seed. This is the regression guard for the whole change, and it constrains the arrival seeding too: no extra RNG call, no counter touched.
+10. **Validation** — over-capacity configs are rejected; out-of-range join rounds are rejected.
 
-The full existing suite (3,631 + 89 + 40 assertions) must stay green at every step, not only at the end. `generateSchedule` feeds the multi-start optimiser and the 2-opt repair, and is the most load-bearing code in the repo.
+The full existing suite (3,631 + 89 + 40 assertions at the time of writing; 4,490 + 89 + 40 once the tests above landed) must stay green at every step, not only at the end. `generateSchedule` feeds the multi-start optimiser and the 2-opt repair, and is the most load-bearing code in the repo.
 
 ## Alternatives considered
 

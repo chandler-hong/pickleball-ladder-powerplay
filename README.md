@@ -14,7 +14,7 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 - **Fresh partners** — every player gets a new partner each round when the pool allows; with *Prefer mixed* on and a small minority gender, mixed courts take priority, so a partner may repeat rather than break up a mixed court
 - **Mixed doubles preference** — *Prefer mixed* maximizes MF-vs-MF courts and never segregates for partner variety; all-men / all-women courts appear only when a gender is in excess on court (e.g. 6 men + 2 women → one all-men court), and MM-vs-FF or 3M/1F courts never occur
 - **Fair byes** — sit-outs distributed evenly with no back-to-back byes and diverse bye groups
-- **Late arrivals** — mark anyone who's running behind and set the round they'll join; they sit out until then and the whole schedule is optimised around their absence in one pass, with their forced byes excluded from bye-fairness so nobody else is penalised for it
+- **Late arrivals** — mark anyone who's running behind and set the round they'll join; they sit out until then and the whole schedule is optimised around their absence in one pass. Their forced byes are excluded from bye-fairness so nobody else is penalised for them, and the newcomer starts level with the field rather than owing the byes they were absent for — so they aren't benched to "catch up" on arrival
 - **Live substitution** — swap player names mid-tournament; changes apply to current and future rounds
 - **Swap Partners button** — cycle through all 3 possible team pairings on any court
 - **Two ways to record results** — tap a team to pick the winner, or switch to **Enter scores** and type each game's score. Score entry has a **Win by 1 / Win by 2** toggle (games to 11), live validation that blocks impossible scores, and a **Complete Game Early** option for games the round timer cuts short
@@ -58,7 +58,7 @@ A multi-start wrapper runs phases 1-3 hundreds of times within an adaptive time 
 | Partner repeats | 0 when the pool allows; with *Prefer mixed* on and a lopsided split, mixed courts take priority so partners can repeat (e.g. 6M/4F over 10 rounds → up to 2) |
 | Back-to-back partners | 0 — the same pair never partners in two consecutive rounds; any forced repeat is always spaced apart |
 | MM vs FF courts | 0 |
-| Bye spread | ≤ 1 after every round when nobody is late — no player receives an (N+1)th bye until everyone has had N. With a late arrival, forced byes before their join round are excluded from the count, so only the final spread is guaranteed ≤ 1 — the running spread can briefly exceed it while the newcomer catches up. |
+| Bye spread | ≤ 1 after every round when nobody is late — no player receives an (N+1)th bye until everyone has had N. With a late arrival, forced byes are excluded and the newcomer is levelled with the field's lowest count on the round they join: the final voluntary spread then measured ≤ 1 in every config tested (2 for someone joining for the final round only — in their favour, fewer byes), and the running spread can reach 2 while the field advances past them. Measured, not proved. |
 | Back-to-back byes | 0 |
 | Same-court pair streak | Typically ≤ 2 consecutive rounds; the generator strongly avoids 3-in-a-row and spaces repeat meetings apart. In very tight low-court configs with no byes (e.g. 12 players / 3 courts), an occasional streak of 3 can occur. |
 | Duplicate players on a court | 0 (hard invariant, verified by tests) |
@@ -70,13 +70,13 @@ The `tests/` directory contains a Node-based test harness with deterministic (se
 
 ```bash
 npm test              # run all suites (≈ 20s)
-npm run test:unit     # schedule smoke tests — 18 cases, 3631 assertions
+npm run test:unit     # schedule smoke tests — 33 cases, 4477 assertions
 npm run test:stress   # schedule end-to-end — 7 scenarios, 3s budget each
 npm run test:utils    # utils helpers — 9 cases, 89 assertions (csvCell, guessGender, shuffle, pickRandomNames, pickleball score validation)
 npm run test:ladder   # ladder logic — 7 cases, 40 assertions (scoring, pairing, movement, leaderboard)
 ```
 
-The schedule tests cover input validation, duplicate-player invariants, gender rules across balanced/skewed pools, bye-fairness invariants — including regression tests for the running, after-every-round guarantee described above — determinism (same seed produces the same schedule), and 2-opt repair correctness. The utils and ladder suites cover CSV-injection escaping, gender detection (including unisex deferral), pickleball score validation (win by 1 / win by 2, rejecting impossible scores), ladder score validation and up/down movement, and leaderboard stats (including the position-based Highest Court ranking).
+The schedule tests cover input validation, duplicate-player invariants, gender rules across balanced/skewed pools, bye-fairness invariants — including regression tests for the running, after-every-round guarantee described above, and for late arrivals: that a newcomer is benched at roughly the field's rate rather than made to absorb the byes they were absent for, and that the generator's incremental voluntary-bye counter, the 2-opt rebuild and the scorer all agree on the same numbers — determinism (same seed produces the same schedule), and 2-opt repair correctness. The utils and ladder suites cover CSV-injection escaping, gender detection (including unisex deferral), pickleball score validation (win by 1 / win by 2, rejecting impossible scores), ladder score validation and up/down movement, and leaderboard stats (including the position-based Highest Court ranking).
 
 ## Tech stack
 

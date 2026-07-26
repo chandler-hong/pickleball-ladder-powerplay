@@ -143,6 +143,9 @@ function buildPlayerGrid(count, skipSave) {
       setupChanged();
       refreshValidationBanner();
       saveState();
+      // Who is present decides whether a 3M/1F court is forced, so the
+      // gender note has to be recomputed here too.
+      checkGenderWarning();
     };
     lateCheck.addEventListener('change', onLateChange);
     joinInput.addEventListener('input', function() {
@@ -297,6 +300,9 @@ document.getElementById('numRounds').addEventListener('input', function() {
   setupChanged();
   refreshValidationBanner();
   saveState();
+  // The round count bounds which rounds the gender note inspects (a join round
+  // past the last round is a validation error, not a note).
+  checkGenderWarning();
 });
 document.getElementById('preferMixed').addEventListener('change', () => {
   setupChanged();
@@ -314,22 +320,63 @@ function checkGenderWarning() {
     warning.style.display = 'none';
     return;
   }
-  let totalM = 0, totalF = 0;
+  const genders = [];
   for (let i = 0; i < currentPlayerCount; i++) {
     const gf = document.getElementById(`g${i}f`);
-    if (gf && gf.checked) totalF++; else totalM++;
+    genders.push(gf && gf.checked ? 'F' : 'M');
   }
-  if (totalM === 0 || totalF === 0) { warning.style.display = 'none'; return; }
-  const numSitOuts = numPlayers - numCourts * 4;
-  const lo = Math.max(0, numSitOuts - totalF);
-  const hi = Math.min(numSitOuts, totalM);
-  const needParity = totalM % 2; // sitM must match this parity for even playM
-  let canAvoid = false;
-  for (let sitM = lo; sitM <= hi; sitM++) {
-    if (sitM % 2 === needParity) { canAvoid = true; break; }
+  // Late arrivals change WHO is on court, so the parity that decides whether a
+  // 3M/1F court is forced has to be judged per round over the players actually
+  // present — the same numbers the generator's Phase 1 works from. Judging it
+  // once over the whole roster missed exactly the case the note describes: with
+  // 8M/8F on 3 courts and 3 men plus 1 woman marked late, round 1 is 5M/7F and
+  // produces a 1M/3F court while a whole-roster check saw a comfortable 8M/8F.
+  // Every round after the last join round has the full roster, so rounds
+  // 1..maxJoin cover every distinct availability profile. With nobody late
+  // maxJoin is 1 and this is exactly the old whole-roster check.
+  const joins = getJoinRounds();
+  const numRounds = parseInt(document.getElementById('numRounds').value);
+  let maxJoin = 1;
+  for (let i = 0; i < joins.length; i++) if (joins[i] > maxJoin) maxJoin = joins[i];
+  // A join round past the last round is a validation error, not something to
+  // warn about; don't inspect rounds that will never be played.
+  const lastRound = numRounds >= 1 ? Math.min(maxJoin, numRounds) : maxJoin;
+  const playersPerRound = numCourts * 4;
+  let offender = null;
+  for (let r = 1; r <= lastRound; r++) {
+    let availM = 0, availF = 0;
+    for (let i = 0; i < joins.length; i++) {
+      if (joins[i] > r) continue;
+      if (genders[i] === 'F') availF++; else availM++;
+    }
+    // An under-populated round is blocked by validation with its own message.
+    if (availM + availF < playersPerRound) continue;
+    if (availM === 0 || availF === 0) continue;
+    // Forced byes have already eaten some of the round's non-playing slots.
+    const roundSitOuts = availM + availF - playersPerRound;
+    const lo = Math.max(0, roundSitOuts - availF);
+    const hi = Math.min(roundSitOuts, availM);
+    const needParity = availM % 2; // sitM must match this parity for even playM
+    let canAvoid = false;
+    for (let sitM = lo; sitM <= hi; sitM++) {
+      if (sitM % 2 === needParity) { canAvoid = true; break; }
+    }
+    if (!canAvoid) {
+      offender = { round: r, availM, availF, roundSitOuts };
+      break;
+    }
   }
-  if (!canAvoid) {
-    warning.innerHTML = `<strong>Note:</strong> With ${totalM} male${totalM !== 1 ? 's' : ''} and ${numSitOuts === 0 ? 'no byes' : numSitOuts + ' bye' + (numSitOuts !== 1 ? 's' : '')}, some courts will have uneven gender splits (3M/1F or 1M/3F). This is mathematically unavoidable with an odd number of males playing.`;
+  if (offender) {
+    const { round, availM, availF, roundSitOuts } = offender;
+    const byePhrase = roundSitOuts === 0 ? 'no byes' : roundSitOuts + ' bye' + (roundSitOuts !== 1 ? 's' : '');
+    const plural = availM !== 1 ? 's' : '';
+    // Only mention the round when availability actually varies; otherwise keep
+    // the plain whole-roster wording. Counted against the rows actually read, so
+    // the sentence stays self-consistent mid-edit when the typed player count
+    // has not yet rebuilt the grid.
+    warning.innerHTML = availM + availF < joins.length
+      ? `<strong>Note:</strong> In round ${round} only ${availM + availF} of the ${joins.length} players have arrived — with ${availM} male${plural} present and ${byePhrase} left to give, some courts will have uneven gender splits (3M/1F or 1M/3F). This is mathematically unavoidable with an odd number of males playing.`
+      : `<strong>Note:</strong> With ${availM} male${plural} and ${byePhrase}, some courts will have uneven gender splits (3M/1F or 1M/3F). This is mathematically unavoidable with an odd number of males playing.`;
     warning.style.display = 'block';
   } else {
     warning.style.display = 'none';

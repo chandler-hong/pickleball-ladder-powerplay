@@ -106,6 +106,56 @@ function fixGenderTeamParity(partnerships, genders, partnerCount) {
   }
 }
 
+// Late arrivals: level a newcomer's voluntary-bye counter with the field on the
+// round they walk in, instead of letting them start at 0.
+//
+// Forced byes are excluded from voluntaryByeCount by design (an absence is not
+// unfairness). The side effect is that an arriving player's counter reads 0
+// while everyone else has accumulated several byes — and every bye-fairness
+// signal ranks fewest-voluntary-byes-first (sitOutPriority, globalMinSitOut /
+// `unfair`, pickSitters). So the person who just walked in went straight to the
+// front of the bye queue and got benched repeatedly until they "caught up",
+// which is the opposite of what this feature is for: measured on 16p/3c/10r,
+// a player joining round 7 played 2 of their 4 available rounds (50% benched)
+// against ~21% for everyone else.
+//
+// Treating them as caught up rather than owed byes fixes it: seed the counter
+// to the minimum among the players already present, so from then on they take
+// byes at the same rate as everybody else. The minimum (not the mean or max) is
+// deliberate — it is the value a player who has been here all along and been
+// luckiest with byes carries, so the newcomer is never *worse* off than the
+// best-off incumbent, while the residual gap to the rest of the field is at
+// most the incumbents' own spread.
+//
+// Seeded once, on the arrival round only, and before that round's bye selection
+// so the selection sees the corrected value. `round` is 1-based. With nobody
+// late every joins[i] === 1 and no player ever satisfies `joins[i] === round`
+// for round > 1, so this is a complete no-op — it makes no RNG call and cannot
+// perturb a seeded schedule.
+//
+// Called from generateSchedule (incrementally), rebuildCounts and scoreSchedule
+// (both replaying the same rule over a finished schedule). All three must apply
+// it identically or "voluntary byes" would mean different numbers depending on
+// who asked; sharing one function is what keeps them from drifting.
+function seedArrivalByeCounts(voluntaryByeCount, joins, round) {
+  if (!joins || round <= 1) return;
+  let arriving = false;
+  for (let i = 0; i < joins.length; i++) {
+    if (joins[i] === round) { arriving = true; break; }
+  }
+  if (!arriving) return;
+  let minPresent = Infinity;
+  for (let i = 0; i < joins.length; i++) {
+    if (joins[i] < round && voluntaryByeCount[i] < minPresent) minPresent = voluntaryByeCount[i];
+  }
+  // Nobody present at all cannot happen (round 1 must field the courts), but a
+  // caller-built result could claim it; leave the counters alone if so.
+  if (minPresent === Infinity) return;
+  for (let i = 0; i < joins.length; i++) {
+    if (joins[i] === round) voluntaryByeCount[i] = minPresent;
+  }
+}
+
 function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed, joinRounds) {
   if (!Number.isInteger(numPlayers) || numPlayers <= 0) throw new Error(`numPlayers must be a positive integer (got ${numPlayers})`);
   if (!Number.isInteger(numCourts) || numCourts <= 0) throw new Error(`numCourts must be a positive integer (got ${numCourts})`);
@@ -166,6 +216,11 @@ function generateSchedule(numPlayers, numCourts, numRounds, genders, preferMixed
   let prevSameGenderPlayers = new Set();
 
   for (let r = 0; r < numRounds; r++) {
+
+    // Anyone arriving this round starts level with the field rather than on 0
+    // voluntary byes. Must run before Phase 1 so the bye selection below reads
+    // the seeded value. No-op when nobody is late. See seedArrivalByeCounts.
+    seedArrivalByeCounts(voluntaryByeCount, joins, r + 1);
 
     // =========================================================
     // PHASE 1: Sit-Out Selection
@@ -854,34 +909,23 @@ function scoreSchedule(result, n, genders) {
   const byeSpread = maxSitOut - minSitOut;
 
   // Mid-schedule bye fairness: worst spread at any point during the schedule.
-  // Counts voluntary byes only, and excludes a player from the comparison on
-  // their own arrival round (not just rounds before it) — but only if they
-  // are a genuine late arrival (joins[i] > 1). On their arrival round a late
-  // arrival starts at 0 voluntary byes by definition, so comparing them
-  // against players who've already accumulated several rounds' worth is
-  // apples-to-oranges — the only way to force the spread down would be to
-  // bench whoever just walked in, which is the opposite of what this
-  // feature is for. A player present since round 1, by contrast, has always
-  // had the same opportunity as everyone else to take a bye on "their"
-  // arrival round, so there is no asymmetry to correct for, and excluding
-  // them too would only hide a real sit-out imbalance. The running count
-  // itself still starts incrementing on the arrival round (joins[p] <=
-  // round.round below); only the comparison window narrows, and only for
-  // players who actually arrived late. This reduces but cannot eliminate
-  // the noise: a late arrival's count necessarily starts at 0 while
-  // everyone else's has accumulated, so this metric has no absolute bound
-  // once someone joins late — it remains a useful comparative signal
-  // between candidates that share the same joinRounds. The absolute
-  // guarantee is byeSpread, above.
+  // Counts voluntary byes only, replaying the same per-round arrival seeding the
+  // generator applies (seedArrivalByeCounts) so the running total here ends on
+  // exactly the numbers in voluntaryByeCount rather than a second, quietly
+  // different notion of "voluntary". Because a late arrival is seeded level with
+  // the field on the round they walk in, they can be compared like anyone else
+  // from that round on; only the rounds they were genuinely absent for are
+  // skipped, where a count of 0 would mean nothing.
   let maxMidByeSpread = 0;
   const runningByeCount = new Array(n).fill(0);
   for (const round of result.schedule) {
+    seedArrivalByeCounts(runningByeCount, joins, round.round);
     round.sitOuts.forEach(p => {
       if (!joins || joins[p] <= round.round) runningByeCount[p]++;
     });
     let lo = Infinity, hi = 0;
     for (let i = 0; i < n; i++) {
-      if (joins && joins[i] >= round.round && joins[i] > 1) continue;
+      if (joins && joins[i] > round.round) continue;
       if (runningByeCount[i] < lo) lo = runningByeCount[i];
       if (runningByeCount[i] > hi) hi = runningByeCount[i];
     }
@@ -1064,7 +1108,11 @@ function rebuildCounts(schedule, n, joinRounds) {
   // result) so this stays correct no matter what the schedule looks like —
   // repair only ever swaps players between courts within a round, never who
   // sits out, but deriving it fresh here means that isn't something callers
-  // need to trust.
+  // need to trust. Counting byes alone is not enough to reproduce
+  // generateSchedule's number, though: a late arrival's counter is seeded on
+  // their arrival round (see seedArrivalByeCounts), so this replay applies the
+  // same seeding, in the same per-round order, below. Without that the two
+  // would silently disagree by the seed for every late arrival.
   const voluntaryByeCount = new Array(n).fill(0);
   const joins = joinRounds || Array.from({length: n}, () => 1);
   const playCount = new Array(n).fill(0);
@@ -1086,6 +1134,9 @@ function rebuildCounts(schedule, n, joinRounds) {
       }
       cp.forEach(i => playCount[i]++);
     }
+    // Same order as generateSchedule: seed the round's arrivals, then count the
+    // round's byes.
+    seedArrivalByeCounts(voluntaryByeCount, joins, round.round);
     for (const p of round.sitOuts) {
       sitOutCount[p]++;
       if (joins[p] <= round.round) voluntaryByeCount[p]++;
