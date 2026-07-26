@@ -138,7 +138,7 @@ This is pure scheduling logic, so unlike recent CSS work it is properly unit-tes
 9. **No-op equivalence** — with `joinRounds` all `1`, or omitted entirely, output is identical to the current generator for the same seed. This is the regression guard for the whole change, and it constrains the arrival seeding too: no extra RNG call, no counter touched.
 10. **Validation** — over-capacity configs are rejected; out-of-range join rounds are rejected.
 
-The full existing suite (3,631 + 89 + 40 assertions at the time of writing; 4,490 + 89 + 40 once the tests above landed) must stay green at every step, not only at the end. `generateSchedule` feeds the multi-start optimiser and the 2-opt repair, and is the most load-bearing code in the repo.
+The full existing suite (3,631 + 89 + 40 assertions at the time of writing; 4,477 + 89 + 40 once the tests above landed) must stay green at every step, not only at the end. `generateSchedule` feeds the multi-start optimiser and the 2-opt repair, and is the most load-bearing code in the repo.
 
 ## Alternatives considered
 
