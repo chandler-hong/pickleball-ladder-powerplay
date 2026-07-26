@@ -127,20 +127,33 @@
     width: 100%; padding-left: 2rem; margin-top: -0.15rem;
   }
 
-  /* Late-arrival control. The round input only appears once the box is ticked —
-     a permanent extra field on every row would crowd a 40-row grid. */
   .late-control { display: flex; align-items: center; gap: 0.3rem; }
   .late-check { position: absolute; opacity: 0; pointer-events: none; }
+  /* A labelled chip, not a bare glyph. The word does the explaining, so a
+     first-time user does not have to hover a tooltip that does not exist on
+     touch. Resting colour is the palette's indigo text at 8.72:1 on the card —
+     the previous #5a5f72 measured 2.75:1, below the 3:1 floor for UI
+     components, and read as a smudge beside the M/F toggle. */
   .late-label {
-    cursor: pointer; font-size: 0.8rem; line-height: 1;
-    padding: 0.25rem 0.35rem; border-radius: 6px;
-    color: #5a5f72; border: 1px solid transparent;
-    transition: all 0.2s ease; user-select: none;
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    cursor: pointer; font-size: 0.72rem; font-weight: 600; line-height: 1;
+    padding: 0.3rem 0.5rem; border-radius: 7px;
+    color: #a5b4fc; background: rgba(129,140,248,0.08);
+    border: 1px solid rgba(129,140,248,0.22);
+    transition: all 0.2s ease; user-select: none; white-space: nowrap;
   }
-  .late-label:hover { color: #a5b4fc; }
+  .late-icon { font-size: 0.9rem; line-height: 1; }
+  .late-label:hover { color: #c7d2fe; border-color: rgba(129,140,248,0.45); }
+  /* The checkbox is visually hidden but still keyboard-focusable, and until now
+     had no focus styling at all — you could tab onto it and toggle it with
+     Space while seeing nothing. Matches the focus treatment used by the text
+     inputs in this file. */
+  .late-check:focus-visible + .late-label {
+    border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,0.25);
+  }
   .late-check:checked + .late-label {
     color: #fbbf24; background: rgba(251,191,36,0.12);
-    border-color: rgba(251,191,36,0.3);
+    border-color: rgba(251,191,36,0.4);
   }
   .join-round-input {
     display: none; width: 42px; padding: 0.25rem; border-radius: 6px;
@@ -152,7 +165,33 @@
   .join-round-input::-webkit-outer-spin-button,
   .join-round-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .late-check:checked ~ .join-round-input { display: block; }
-  [data-theme="light"] .late-label { color: #9aa1ad; }
+  /* Hint under the Players heading. The Ladder has an equivalent
+     (.ladder-assignment-hint) but that one is display:none until <=640px,
+     because its drag interaction is only unclear on touch. This control is
+     unclear at every width, so this hint is always visible. */
+  .late-hint {
+    font-size: 0.72rem; color: #a5b4fc;
+    background: rgba(129,140,248,0.08);
+    border: 1px solid rgba(129,140,248,0.18);
+    border-radius: 8px; padding: 0.5rem 0.75rem;
+    margin: -0.25rem 0 1rem 0;
+  }
+  .late-hint .late-hint-icon { font-size: 0.85rem; }
+  /* Light theme: the previous #9aa1ad measured 2.60:1 on the white card and
+     also failed. There was no ticked-state rule at all, so a ticked chip
+     inherited the dark theme's amber on white. */
+  [data-theme="light"] .late-label {
+    color: #4f46e5; background: rgba(99,102,241,0.07);
+    border-color: rgba(99,102,241,0.22);
+  }
+  [data-theme="light"] .late-label:hover { color: #4338ca; border-color: rgba(99,102,241,0.45); }
+  [data-theme="light"] .late-check:checked + .late-label {
+    color: #b45309; background: rgba(234,88,12,0.1);
+    border-color: rgba(234,88,12,0.35);
+  }
+  [data-theme="light"] .late-hint {
+    color: #4338ca; background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.2);
+  }
   [data-theme="light"] .join-round-input { background: #fff; border-color: #d5d9e2; color: #1b1e26; }
 
   /* Court Number Inputs */
@@ -760,6 +799,12 @@
       min-width: 3rem; min-height: 48px;
       display: flex; align-items: center; justify-content: center;
     }
+    /* 44px tap target, matching the other mobile controls in this file.
+       .player-input already has flex-wrap: wrap, so the chip drops to its own
+       line when the row runs out of width — no extra rule needed for that. */
+    .late-label { min-height: 44px; padding: 0.3rem 0.7rem; font-size: 0.78rem; }
+    .late-icon { font-size: 1rem; }
+    .join-round-input { min-height: 44px; width: 52px; font-size: 0.9rem; }
     .court-num-input { min-height: 44px; width: 64px; font-size: 1rem; padding: 0.6rem; }
     .controls { flex-direction: column; gap: 0.6rem; }
     .controls .spacer { display: none; }
