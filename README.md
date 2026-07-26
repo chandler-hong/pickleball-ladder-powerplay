@@ -14,7 +14,7 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 - **Fresh partners** — every player gets a new partner each round when the pool allows; with *Prefer mixed* on and a small minority gender, mixed courts take priority, so a partner may repeat rather than break up a mixed court
 - **Mixed doubles preference** — *Prefer mixed* maximizes MF-vs-MF courts and never segregates for partner variety; all-men / all-women courts appear only when a gender is in excess on court (e.g. 6 men + 2 women → one all-men court), and MM-vs-FF or 3M/1F courts never occur
 - **Fair byes** — sit-outs distributed evenly with no back-to-back byes and diverse bye groups
-- **Late arrivals** — mark anyone who's running behind and set the round they'll join; they sit out until then and the whole schedule is optimised around their absence in one pass. Their forced byes are excluded from bye-fairness so nobody else is penalised for them, and the newcomer starts level with the field rather than owing the byes they were absent for — so they aren't benched to "catch up" on arrival
+- **Late arrivals** — tap **⏱ Late** on anyone who's running behind and set the round they'll join; they sit out until then and the whole schedule is optimised around their absence in one pass. Their forced byes are excluded from bye-fairness so nobody else is penalised for them, and the newcomer starts level with the field rather than owing the byes they were absent for — so they aren't benched to "catch up" on arrival
 - **Live substitution** — swap player names mid-tournament; changes apply to current and future rounds
 - **Swap Partners button** — cycle through all 3 possible team pairings on any court
 - **Two ways to record results** — tap a team to pick the winner, or switch to **Enter scores** and type each game's score. Score entry has a **Win by 1 / Win by 2** toggle (games to 11), live validation that blocks impossible scores, and a **Complete Game Early** option for games the round timer cuts short
@@ -38,6 +38,7 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 - State persists in localStorage across page refreshes (with a schema version that safely resets incompatible saved data instead of breaking on boot)
 - **Light / dark theme toggle** — defaults to your device's setting and remembers your choice across visits
 - Mobile-responsive layout
+- **Labelled ⏱ Late chip** — the late-arrival marker on each player row carries the word, not just a clock, so it explains itself without relying on a hover tooltip that touch devices don't have; a hint line sits under the Players heading at every screen width, the chip is a 44px tap target on mobile, and tabbing to it shows a focus ring. Its text clears WCAG AA (4.5:1) in both themes, resting and ticked — measured in a browser against the chip's own composited background rather than the flat card colour behind it
 - Gender auto-detection from 2,000+ names across 20+ cultures; a gender you set by hand is sticky and never auto-overridden
 
 ## Algorithm
