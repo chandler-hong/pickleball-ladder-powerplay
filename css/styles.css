@@ -86,12 +86,16 @@
      second line — which is what leaves the name 160px at 900px and 183px at
      390px.
      70px is chosen to sit between two measured cliffs. Above 77px an UNTICKED
-     row starts wrapping too, because every grid-column boundary produces a
-     240px row (the `minmax(240px, 1fr)` minimum on .player-grid) and thus a
-     77px name — that happens near 594px and 847px viewports. Below 52px the
-     wrap stops firing for ticked rows at 390px. 70px clears the first by 7px
-     and the second by 18px. Do not raise this past 77px without re-measuring
-     the narrow ticked rows at those two grid boundaries. */
+     row starts wrapping too, because a grid-column boundary produces a 240px
+     row (the `minmax(240px, 1fr)` minimum on .player-grid) and thus a 77px
+     name. Exactly one such boundary is reachable, at 846-847px: below it
+     .player-grid is forced to a single 1fr column at max-width: 640px, so the
+     next boundary down never renders (594px is one 528px column with a 313px
+     name), and above it .container's max-width: 1000px caps the grid at 942px,
+     short of the 988.8px a fourth column would need. Below 52px the wrap stops
+     firing for ticked rows at 390px. 70px clears the first by 7px and the
+     second by 18px. Do not raise this past 77px without re-measuring the
+     narrow ticked rows at that grid boundary. */
   .player-input input[type="text"] {
     flex: 1; min-width: 70px; padding: 0.55rem 0.85rem; border-radius: 10px;
     border: 1px solid #2a2d37;
@@ -147,9 +151,12 @@
   .late-check { position: absolute; opacity: 0; pointer-events: none; }
   /* A labelled chip, not a bare glyph. The word does the explaining, so a
      first-time user does not have to hover a tooltip that does not exist on
-     touch. Resting colour is the palette's indigo text at 8.72:1 on the card —
-     the previous #5a5f72 measured 2.75:1, below the 3:1 floor for UI
-     components, and read as a smudge beside the M/F toggle. */
+     touch. Resting colour is the palette's indigo text at 7.83:1, measured
+     against the chip's own tint as Chrome paints it over the card (#202330) —
+     not the 8.72:1 the flat #181a20 card would suggest. The previous control
+     was a bare #5a5f72 glyph with no tint behind it, so its 2.75:1 really was
+     straight on the card; that is below the 3:1 floor for UI components, and
+     it read as a smudge beside the M/F toggle. */
   .late-label {
     display: inline-flex; align-items: center; gap: 0.25rem;
     cursor: pointer; font-size: 0.72rem; font-weight: 600; line-height: 1;
@@ -160,13 +167,6 @@
   }
   .late-icon { font-size: 0.9rem; line-height: 1; }
   .late-label:hover { color: #c7d2fe; border-color: rgba(129,140,248,0.45); }
-  /* The checkbox is visually hidden but still keyboard-focusable, and until now
-     had no focus styling at all — you could tab onto it and toggle it with
-     Space while seeing nothing. Matches the focus treatment used by the text
-     inputs in this file. */
-  .late-check:focus-visible + .late-label {
-    border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,0.25);
-  }
   .late-check:checked + .late-label {
     color: #fbbf24; background: rgba(251,191,36,0.12);
     border-color: rgba(251,191,36,0.4);
@@ -202,13 +202,36 @@
   }
   [data-theme="light"] .late-label:hover { color: #4338ca; border-color: rgba(99,102,241,0.45); }
   [data-theme="light"] .late-check:checked + .late-label {
-    /* The backdrop is the tint composited over the white card (#fdeee7), not
-       the card alone, so the colour is measured against that composed backdrop.
-       #9a3412 on #fdeee7 measures 6.46:1. This pairing already exists with
-       [data-theme="light"] .btn-export-pdf and .btn-early, both using the same
-       rgba(234,88,12,…) tint family. */
+    /* The backdrop is the tint composited over the white card (#fdeee6 as
+       Chrome paints it), not the card alone, so the colour is measured against
+       that composed backdrop: #9a3412 on #fdeee6 measures 6.45:1. This pairing
+       already exists with [data-theme="light"] .btn-export-pdf and .btn-early,
+       both using the same rgba(234,88,12,…) tint family. */
     color: #9a3412; background: rgba(234,88,12,0.1);
     border-color: rgba(234,88,12,0.35);
+  }
+  /* The checkbox is visually hidden but still keyboard-focusable, and before
+     this control was relabelled it had no focus styling at all — you could tab
+     onto it and toggle it with Space while seeing nothing.
+     These two rules MUST stay below every :checked rule above them, because
+     both win on source order rather than weight. The dark one ties
+     .late-check:checked + .late-label at specificity (0,3,0); the light one
+     needs its [data-theme="light"] prefix just to reach (0,4,0) and tie the
+     light :checked rule — unprefixed it would sit at (0,3,0) and lose to that
+     rule outright, at any position in the file. Move either one back above and
+     the ring silently disappears at the exact moment a keyboard user presses
+     Space to tick the chip.
+     The border colours are the ones .player-input input[type="text"]:focus
+     already uses in each theme. Light needs its own value: #818cf8 measures
+     2.98:1 on the white card, under the 3:1 floor for a UI component, while
+     #6366f1 measures 4.47:1. The 3px box-shadow is decoration only — it
+     measures under 2:1 against the card in both themes, so the 1px border is
+     what carries the indicator contrast. */
+  .late-check:focus-visible + .late-label {
+    border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,0.25);
+  }
+  [data-theme="light"] .late-check:focus-visible + .late-label {
+    border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.25);
   }
   [data-theme="light"] .late-hint {
     color: #4338ca; background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.2);

@@ -38,7 +38,7 @@ A scheduling tool for pickleball round-robin tournaments and traditional ladder 
 - State persists in localStorage across page refreshes (with a schema version that safely resets incompatible saved data instead of breaking on boot)
 - **Light / dark theme toggle** — defaults to your device's setting and remembers your choice across visits
 - Mobile-responsive layout
-- **Labelled ⏱ Late chip** — the late-arrival marker on each player row carries the word, not just a clock, so it explains itself without relying on a hover tooltip that touch devices don't have; a hint line sits under the Players heading at every screen width, the chip is a 44px tap target on mobile, and tabbing to it shows a focus ring. Its text clears WCAG AA (4.5:1) in both themes, resting and ticked — measured in a browser against the chip's own composited background rather than the flat card colour behind it
+- **Labelled ⏱ Late chip** — the late-arrival marker on each player row carries the word, not just a clock, so it explains itself without relying on a hover tooltip that touch devices don't have; a hint line sits under the Players heading at every screen width, the chip is a 44px tap target on mobile, and tabbing to it shows a focus ring that stays visible after you tick it. Its text clears WCAG AA (4.5:1) in both themes, resting and ticked
 - Gender auto-detection from 2,000+ names across 20+ cultures; a gender you set by hand is sticky and never auto-overridden
 
 ## Algorithm

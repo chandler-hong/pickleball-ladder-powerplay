@@ -39,7 +39,8 @@ function buildPlayerGrid(count, skipSave) {
       `<label for="g${i}f" class="g-f">F</label>` +
       `</div>` +
       `<div class="late-control">` +
-      `<input type="checkbox" id="late${i}" class="late-check">` +
+      `<input type="checkbox" id="late${i}" class="late-check" ` +
+      `aria-label="Player ${i + 1} arrives late">` +
       `<label for="late${i}" class="late-label" title="Arrives late — sits out until their join round">` +
       `<span class="late-icon" aria-hidden="true">⏱</span>Late</label>` +
       `<input type="number" id="joinRound${i}" class="join-round-input" min="2" max="30" value="2" ` +
