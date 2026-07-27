@@ -76,8 +76,24 @@
     font-size: 0.7rem; font-weight: 600; color: #5a5f72;
     min-width: 1.5rem; text-align: right; font-variant-numeric: tabular-nums;
   }
+  /* The 70px floor is what makes .player-input's flex-wrap above actually work.
+     With the previous `min-width: 0` this input, being `flex: 1`, was allowed to
+     shrink to nothing, so it always yielded before the row reached a wrap point
+     and the wrap could never fire. A ticked row therefore squeezed the name to
+     49px at 900px and 52px at 390px, clipping even a four-letter name. With a
+     floor the input refuses to shrink past it, the row overflows instead, and
+     .late-control (chip plus round-number input, one flex item) drops to a
+     second line — which is what leaves the name 160px at 900px and 183px at
+     390px.
+     70px is chosen to sit between two measured cliffs. Above 77px an UNTICKED
+     row starts wrapping too, because every grid-column boundary produces a
+     240px row (the `minmax(240px, 1fr)` minimum on .player-grid) and thus a
+     77px name — that happens near 594px and 847px viewports. Below 52px the
+     wrap stops firing for ticked rows at 390px. 70px clears the first by 7px
+     and the second by 18px. Do not raise this past 77px without re-measuring
+     the narrow ticked rows at those two grid boundaries. */
   .player-input input[type="text"] {
-    flex: 1; min-width: 0; padding: 0.55rem 0.85rem; border-radius: 10px;
+    flex: 1; min-width: 70px; padding: 0.55rem 0.85rem; border-radius: 10px;
     border: 1px solid #2a2d37;
     background: #1e2028; color: #e4e7ec;
     font-family: inherit; font-size: 0.85rem; outline: none;
